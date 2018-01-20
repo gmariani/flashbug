@@ -2,24 +2,29 @@ FBL.ns(function() { with (FBL) {
 	
 const AMF_MIME = "application/x-amf";
 
+var Ci = Components.interfaces;
+var Cc = Components.classes;
+var Cu = Components.utils;
+
 var $FL_STR = Flashbug.$FL_STR,
 $FL_STRF = Flashbug.$FL_STRF;
+
+function trace(msg, obj) {
+	msg = "Flashbug - AMFTab::" + msg;
+	if (FBTrace.DBG_FLASH_AMF_TAB) {
+		if (typeof FBTrace.sysout == "undefined") {
+			Flashbug.alert(msg + " | " + obj);
+		} else {
+			FBTrace.sysout(msg, obj);
+		}
+	}
+}
 	
-Firebug.AMFInfoTab = extend(Firebug.Module, {
+Flashbug.AMFInfoModule = extend(Firebug.Module, {
 	
 	tabId1: "AMFPost",
 	tabId2: "AMFResponse",
-	
-	trace: function(msg, obj) {
-		msg = "Flashbug - AMFTab::" + msg;
-		if (FBTrace.DBG_FLASH_AMF) {
-			if (typeof FBTrace.sysout == "undefined") {
-				Flashbug.alert(msg + " | " + obj);
-			} else {
-				FBTrace.sysout(msg, obj);
-			}
-		}
-	},
+	trace: trace,
 	
 	// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 	// Extends Module
@@ -27,7 +32,7 @@ Firebug.AMFInfoTab = extend(Firebug.Module, {
 	dispatchName: "AMFViewer",
 	
     initialize: function() {
-		this.trace("initialize");
+		trace("initialize");
 		
 		Firebug.Module.initialize.apply(this, arguments);
 		
@@ -42,30 +47,23 @@ Firebug.AMFInfoTab = extend(Firebug.Module, {
 		// Register NetInfoBody listener
         Firebug.NetMonitor.NetInfoBody.addListener(this);
 		
-		// Unregister NetRequestTable listener
-        //Firebug.NetMonitor.NetRequestTable.addListener(this);
-		
 		// Register cache listener
 		Firebug.TabCacheModel.addListener(this);
     },
 	
     shutdown: function() {
-		this.trace("shutdown");
+		trace("shutdown");
 		
 		Firebug.Module.shutdown.apply(this, arguments);
 		
 		// Unregister NetInfoBody listener
         Firebug.NetMonitor.NetInfoBody.removeListener(this);
 		
-		// Unregister NetRequestTable listener
-		//Firebug.NetMonitor.NetRequestTable.addListener(this);
-		
 		// Unregister cache listener
 		Firebug.TabCacheModel.removeListener(this);
     },
 	
 	showPanel: function(browser, panel) {
-		this.trace("showPanel");
 		if (panel && panel.name == "net") {
 			// Append CSS
 			var doc = panel.document;
@@ -87,34 +85,12 @@ Firebug.AMFInfoTab = extend(Firebug.Module, {
 	},
 	
 	// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
-	// Extends NetRequestTable
-
-	/*onCreateRequestEntry: function(netRequestTable, row, file) {
-		this.trace("onCreateRequestEntry", netRequestTable);
-		this.trace("onCreateRequestEntry2", row);
-		
-		if (this.isAMF(safeGetContentType(file.request))) {
-			
-			// Remove the undefined category and correct it
-			file.category = "amf";
-			removeClass(file.row, "category-undefined");
-			setClass(file.row, "flb-amf-category");
-		}
-	},*/
-	
-	// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 	// Extends NetInfoBody
 	
     initTabBody: function(infoBox, file) {
-		this.trace("initTabBody", file);
-		if (this.isAMF(safeGetContentType(file.request))) {
-			this.trace("initTabBody2", infoBox);
-			
-			// Remove the undefined category and correct it
-			//file.category = "amf";
-			//removeClass(file.row, "category-undefined");
-			//setClass(file.row, "flb-amf-category");
-			
+		var request = file.request || file;
+		//trace("initTabBody", file);
+		if (this.isAMF(safeGetContentType(request))) {
 			Firebug.NetMonitor.NetInfoBody.appendTab(infoBox, this.tabId1, $FL_STR("flashbug.netInfoAMF.requestTitle"));
 			Firebug.NetMonitor.NetInfoBody.appendTab(infoBox, this.tabId2, $FL_STR("flashbug.netInfoAMF.responseTitle"));
 		}
@@ -123,7 +99,7 @@ Firebug.AMFInfoTab = extend(Firebug.Module, {
     destroyTabBody: function(infoBox, file) {},
 	
     updateTabBody: function(infoBox, file, context) {
-		this.trace("updateTabBody", file);
+		
 		
 		// Get currently selected tab.
 		var tab = infoBox.selectedTab;
@@ -140,7 +116,7 @@ Firebug.AMFInfoTab = extend(Firebug.Module, {
 		
 		if(isPostTab) {
 			// Create container html
-			tabBody = Firebug.FlashbugModel.NetInfoAMF.tagPost.replace({}, tabBody);
+			tabBody = Flashbug.AMFInfoModule.NetInfoAMF.tagPost.replace({}, tabBody, Flashbug.AMFInfoModule.NetInfoAMF);
 			
 			// Request
 			if(!file.requestAMF) {
@@ -148,17 +124,23 @@ Firebug.AMFInfoTab = extend(Firebug.Module, {
 					var worker = new Worker("chrome://flashbug/content/lib/AMFWorker.js");
 					var t = this;
 					worker.onmessage = function(event) {
-						t.trace("Worker post complete", event.data);
+						if (event.data && event.data.type && event.data.type == 'debug') {
+							var arr = event.data.message,
+								title = arr.shift();
+							t.trace('Worker trace - ' + title, arr);
+						} else {
+							t.trace("Worker post complete", event.data);
 						
-						file.requestAMF = event.data;
-						Firebug.DOMPanel.DirTable.tag.replace({object: file.requestAMF, toggles: t.toggles}, getChildByClass(tabBody, "flashbugAMFRequest"));
+							file.requestAMF = event.data;
+							Firebug.DOMPanel.DirTable.tag.replace({object: file.requestAMF, toggles: t.toggles}, getChildByClass(tabBody, "flashbugAMFRequest"), Firebug.DOMPanel.DirTable);
+						}
 					};
 					worker.onerror = function(error) {
 						t.trace("Worker error post: " + error.message, error);
-						Firebug.FlashbugModel.NetInfoAMF.tagError.replace({message:$FL_STR("flashbug.netInfoAMF.error.parse") + ": " + file.href}, tabBody);
+						Flashbug.AMFInfoModule.NetInfoAMF.tagError.replace({message:$FL_STR("flashbug.netInfoAMF.error.parse") + ": " + file.href}, tabBody, Flashbug.AMFInfoModule.NetInfoAMF);
 					};
 					
-					var postText = file.postText;//Flashbug.getPostText(file);
+					var postText = file.postText;
 					
 					// Strip headers
 					postText = postText.replace(/^([^:]+):\s?(.*)[\r|\n]|\r?\n$|[\r\n]$/gm, ""); // Remove headers and one LF
@@ -166,14 +148,14 @@ Firebug.AMFInfoTab = extend(Firebug.Module, {
 					
 					worker.postMessage(postText);
 				} else {
-					Firebug.FlashbugModel.NetInfoAMF.tagError.replace({message:$FL_STR("flashbug.netInfoAMF.error.load") + ": " + file.href}, tabBody);
+					Flashbug.AMFInfoModule.NetInfoAMF.tagError.replace({message:$FL_STR("flashbug.netInfoAMF.error.load") + ": " + file.href}, tabBody);
 				}
 			} else {
 				Firebug.DOMPanel.DirTable.tag.replace({object: file.requestAMF, toggles: this.toggles}, getChildByClass(tabBody, "flashbugAMFRequest"));
 			}
 		} else {
 			// Create container html
-			tabBody = Firebug.FlashbugModel.NetInfoAMF.tagResponse.replace({}, tabBody);
+			tabBody = Flashbug.AMFInfoModule.NetInfoAMF.tagResponse.replace({}, tabBody);
 			
 			// Response
 			if(!file.responseAMF) {
@@ -181,22 +163,27 @@ Firebug.AMFInfoTab = extend(Firebug.Module, {
 					var worker = new Worker("chrome://flashbug/content/lib/AMFWorker.js");
 					var t = this;
 					worker.onmessage = function(event) {
-						t.trace("Worker response complete", event.data);
+						if (event.data.type == 'debug') {
+							var arr = event.data.message,
+								title = arr.shift();
+							t.trace('Worker trace - ' + title, arr);
+						} else {
+							t.trace("Worker response complete", event.data);
 						
-						file.responseAMF = event.data;
-						Firebug.DOMPanel.DirTable.tag.replace({object: file.responseAMF, toggles: t.toggles}, getChildByClass(tabBody, "flashbugAMFResponse"));
+							file.responseAMF = event.data;
+							Firebug.DOMPanel.DirTable.tag.replace({object: file.responseAMF, toggles: t.toggles}, getChildByClass(tabBody, "flashbugAMFResponse"));
+						}
 					};
 					worker.onerror = function(error) {
 						t.trace("Worker error response: " + error.message, error);
-						Firebug.FlashbugModel.NetInfoAMF.tagError.replace({message:$FL_STR("flashbug.netInfoAMF.error.parse") + ": " + file.href}, tabBody);
+						Flashbug.AMFInfoModule.NetInfoAMF.tagError.replace({message:$FL_STR("flashbug.netInfoAMF.error.parse") + ": " + file.href}, tabBody);
 					};
 					
-					//var responseText = context.sourceCache.loadText(file.href, file.method, file);
-					var responseText = file.responseText;//Flashbug.getResponseText2(file, context);
-					this.trace("responseText", responseText);
+					var responseText = file.responseText;
+					trace("responseText", responseText);
 					worker.postMessage(responseText);
 				} else {
-					Firebug.FlashbugModel.NetInfoAMF.tagError.replace({message:$FL_STR("flashbug.netInfoAMF.error.load") + ": " + file.href}, tabBody);
+					Flashbug.AMFInfoModule.NetInfoAMF.tagError.replace({message:$FL_STR("flashbug.netInfoAMF.error.load") + ": " + file.href}, tabBody);
 				}
 			} else {
 				Firebug.DOMPanel.DirTable.tag.replace({object: file.responseAMF, toggles: this.toggles}, getChildByClass(tabBody, "flashbugAMFResponse"));
@@ -205,7 +192,7 @@ Firebug.AMFInfoTab = extend(Firebug.Module, {
 	},
 	
 	isAMF: function(contentType) {
-		this.trace(contentType + " :: " + AMF_MIME);
+		//trace(contentType + " :: " + AMF_MIME);
 		if (!contentType) return false;
 		if (contentType.indexOf(AMF_MIME) == 0) return true;
 		return false;
@@ -214,10 +201,10 @@ Firebug.AMFInfoTab = extend(Firebug.Module, {
 
 // ************************************************************************************************
 
-Firebug.FlashbugModel.NetInfoAMF = domplate(Firebug.Rep, {
+Flashbug.AMFInfoModule.NetInfoAMF = domplate(Firebug.Rep, {
 	inspectable: false,
 	
-	trace:Firebug.AMFInfoTab.trace,
+	trace:Flashbug.AMFInfoModule.trace,
 	
 	tagPost:
 		DIV({"role": "tabpanel"},
@@ -290,16 +277,22 @@ Firebug.FlashbugModel.NetInfoAMF = domplate(Firebug.Rep, {
 // Firebug Registration //
 //////////////////////////
 
-var fbVersion = Firebug.version.split('.');
-if (fbVersion[0] >= 1 && fbVersion[1] >= 6) {
-	if(CCSV("@mozilla.org/preferences-service;1", "nsIPrefBranch2").getBoolPref(Firebug.prefDomain + ".flashbug.enableAMF")) {
-		Firebug.registerModule(Firebug.AMFInfoTab);
-	}
+if(CCSV("@mozilla.org/preferences-service;1", "nsIPrefBranch2").getBoolPref(Firebug.prefDomain + ".flashbug.enableAMF")) {
+	Firebug.registerModule(Flashbug.AMFInfoModule);
 }
 
 /////////////////////////////
 // Firebug Trace Constants //
 /////////////////////////////
-FBTrace.DBG_FLASH_AMF = Firebug.getPref(Firebug.prefDomain, "DBG_FLASH_AMF");
+
+FBTrace.DBG_FLASH_AMF_TAB = Firebug.getPref(Firebug.prefDomain, "DBG_FLASH_AMF_TAB");
+
+// Add flash mime types
+try {
+Firebug.NetMonitor.Utils.mimeCategoryMap["application/x-amf"] = "flash";
+Firebug.NetMonitor.Utils.mimeCategoryMap["application/shockwave-flash"] = "flash";
+Firebug.NetMonitor.Utils.mimeCategoryMap["application/x-futuresplash"] = "flash";
+Firebug.NetMonitor.Utils.mimeCategoryMap["application/futuresplash"] = "flash";
+} catch (e) { }
 
 }});

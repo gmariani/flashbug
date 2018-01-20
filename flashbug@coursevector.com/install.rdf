@@ -1,9 +1,9 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="utf-8"?>
 <RDF xmlns="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:em="http://www.mozilla.org/2004/em-rdf#">
 
 	<Description about="urn:mozilla:install-manifest">
 		<em:id>flashbug@coursevector.com</em:id>
-		<em:version>1.7.4</em:version>
+		<em:version>1.8.5</em:version>
 		<em:type>2</em:type>
 		<!-- -p 'Development' -purgecaches -->
 		<em:unpack>true</em:unpack>
@@ -12,8 +12,8 @@
 		<em:targetApplication>
 			<Description>
 				<em:id>{ec8030f7-c20a-464f-9b0e-13a3a9e97384}</em:id>
-				<em:minVersion>3.6</em:minVersion>
-				<em:maxVersion>5.*</em:maxVersion>
+				<em:minVersion>9.0</em:minVersion>
+				<em:maxVersion>11.*</em:maxVersion>
 			</Description>
 		</em:targetApplication>
 		
@@ -24,7 +24,8 @@
 		<em:contributor>Nathan Mische</em:contributor>
 		<em:contributor>Jon Toland</em:contributor>
 		<em:homepageURL>http://blog.coursevector.com/flashbug</em:homepageURL>
-		<em:optionsURL>chrome://flashbug/content/settings.xul</em:optionsURL>
+		<em:optionsURL>chrome://flashbug/content/preferences.xul</em:optionsURL>
+		<em:iconURL>chrome://flashbug/skin/icon32.png</em:iconURL>
 		<em:icon64URL>chrome://flashbug/skin/icon64.png</em:icon64URL>
 	</Description>
 </RDF>

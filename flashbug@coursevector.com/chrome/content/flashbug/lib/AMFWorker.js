@@ -7,6 +7,24 @@ const AMF3_VERSION = 3;
 
 var amf0 = new Flashbug.AMF0();
 
+function trace2() {
+	var str = '';
+	var arr = [];
+	for (var i = 0, l = arguments.length; i < l; i++) {
+		str += arguments[i];
+		arr[i] = arguments[i];
+		if (i != (l - 1)) str += ', ';
+	}
+	str += '\n';
+	
+	postMessage({
+        type: "debug",
+        message: arr
+    });
+	
+	dump(str);
+}
+
 // From Firebug Lib //
 function formatSize(bytes) {
 

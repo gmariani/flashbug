@@ -52,13 +52,13 @@ Flashbug.AMF0 = function() {
 	this.readObjectCache = [];
 	
 	// The raw binary data
-	this._rawData;
+	this._rawData = null;
 	
 	// The decoded data
-	this._data;
+	this._data = null;
 	
 	// AMF3 Parser
-	this._amf3;
+	this._amf3 = null;
 	
 	//--------------------------------------
 	//  Constructor
@@ -122,6 +122,7 @@ Flashbug.AMF0.prototype = {
 			*/
 			default: ERROR("AMF0::readData - Error : Undefined AMF0 type encountered '" + type + "'");
 		}
+		return null;
 	},
 	
 	readNumber: function(ba) {
@@ -215,7 +216,7 @@ Flashbug.AMF0.prototype = {
 		} catch (e) {
 			ERROR("AMF0::readCustomClass - Error : Cannot parse custom class");
 		}
-		obj.__className = className;
+		obj.__traits = { type:className };
 		
 		// Try to type it to the class def
 		/*try {

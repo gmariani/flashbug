@@ -1,0 +1,180 @@
+// TODO: All Panels - Search with regex
+// TODO: Console Panel - Custom filters/coloring
+// TODO: Decompile Panel - Integrate native inspection
+// TODO: Decompile Panel - Integrate search
+// TODO: Decompile Panel - AS3/AS2 ActionScript
+// TODO: Decompile Panel - Finish export ADPCM audio, can't figure out how to convert Flash ADPCM to normal IMA/DVI ADPCM
+http://www.sonicspot.com/guide/wavefiles.html
+http://blog.theroyweb.com/extracting-wav-file-header-information-using-a-python-script
+// TODO: Decompile Panel - Figure out bits encoded on WAVE
+// TODO: Decompile Panel - Figure out video frame duration in MS
+// TODO: Inspector Panel.isValidFlashPlayer - TEST with a version 9 player!!!
+// TODO: Inspector Panel - memory profiler
+// TODO: ByteArrayString.readString - If Flash 5- read ANSI or shift-JIS
+
+1.8.5 - 
+Improved support for Firebug 1.9
+
+1.8.4 - 
+Supports Firefox 9, 10, 11
+Supports Firebug 1.9
+
+1.8.3 -
+Supports Firefox 8,9
+Console Panel - Wrap extremely long lines without breaks (bug#35)
+All Panels - Display Player version correctly on Linux (bug #39)
+
+1.8.2 -
+Supports Firefox 7,8
+Console Panel - Fixed clearing console when panel detached
+Preferences Window - Mac OS X buttons cutoff issue resolved
+Preferences Window - Properly loads and saves mm.cfg
+
+1.8.1 -
+Firebug 1.8 Net Panel - Added SPL and AMF mime types to Flash filter
+Decompile Panel/SharedObject Panel/AMF Tab - Fixed ByteArray.readDouble bug
+Decompile Panel - Fixed MATRIX parsing
+Decompile Panel - Shapes now display image fills
+Decompile Panel - Fixed DefineMorphShape2 parsing
+Decompile Panel - Fixed DefineFont2 parsing
+
+1.8.0 -
+Supports Firefox 4,5,6
+Supports Firebug 1.7,1.8
+Removed version.swf
+New Preferences Window
+Preferences Window allows selectable file paths
+Preferences Window now supports all known mm.cfg settings
+SWF Tab - Removed, now Flash Decompiler Panel
+New Flash Decompiler Panel
+Decompiler Panel - Shows morph shapes as an animation now
+Decompiler Panel - Shows details of embedded PixelBender files
+Decompiler Panel - Shows XML binary data
+Decompiler Panel - Shows decompile errors
+Decompiler Panel - Shows font glyphs
+Decompiler Panel - Improved Shape parsing
+Decompiler Panel - Improved Font/TextField parsing
+Decompiler Panel - Improved SWF/SPL detection
+Decompiler Panel - Improved Export button styling
+Shared Object Panel - Improved SWF/SPL detection
+Console Panel - Fixed open FlashLog bug
+Shared Object Panel - Styling updated to be more on par with Firebug
+New Flash Inspector Panel
+Flash Inspector Panel allows inspection of a running SWF like Flashfirebug (CANNOT be used at the same time as Flashfirebug)
+
+1.7.3 -
+Add SPL mime type
+Added default locale support (uses firebug pref)
+Fixed small localization bug
+
+1.7.2 -
+Updated support for Firebug 1.7
+
+1.7.1 -
+Updated support for Firefox 4
+Updated version compatibility
+Fixed autoscroll bug with Firefox 4
+Added gradient stroke support for decompiled SWFs
+Added 64x64 icon
+
+1.7 - 
+Supports Firefox 3.6+
+Supports Firebug 1.6+
+Updated AMF parsers to Minerva 3.2
+Fixed MM.cfg creation
+Fixed mm.cfg Vista location
+Fixed Ubuntu trust file creation
+Fixed Ubuntu trust file permissions
+Removed the .DTD file, no more entity based localization
+Removed legacy code
+
+AMF Tab - Asynchronous
+AMF Tab can now export the data
+AMF Tab now has better error handling messages
+AMF Tab now has a fix for the disappearing tab bug
+AMF Tab is now split into two corresponding tabs
+New SWF Tab
+SWF Tab - Asynchronous
+SOL Panel - Asynchronous
+Log Panel - Synchronous
+Log Panel now supports JSON automatically in traces (Must be a single line, no line breaks)
+Log Panel now supports XML automatically in traces (Must be a single line, no line breaks)
+Log Panel now has a min height for traces of blank lines.
+Log Panel now has titles for links in traces
+Log Panel now has a unified Search feature to blend with the native Firebug panels
+New Shared Object Panel
+Shared Object Panel is separated so it can be invidually enabled or disabled
+Shared Object Panel now has a delete all button to remove all Shared Objects detected
+
+Supports exportAssets
+Supports symbolClass
+Supports fileAttributes
+Supports metadata
+Supports protect
+Supports setBackgroundColor
+Supports productInfo
+
+Supports defineBindaryData
+
+Supports JPEGTables
+Supports defineBits
+Supports defineBitsJPEG2
+Supports defineBitsJPEG3
+Supports defineBitsJPEG4 (experimental - needs test)
+Supports defineBitsLossless
+	- 8  bit
+	- 15 bit (experimental - needs test)
+	- 24 bit
+Supports defineBitsLossless2
+	- 8  bit
+	- 32 bit
+
+Supports defineEditText
+Supports defineText
+Supports defineText2
+
+Supports defineFont
+Supports defineFont2
+Supports defineFont3
+Supports defineFont4
+Supports defineFontInfo
+Supports defineFontInfo2
+Supports defineFontName
+
+Supports defineShape
+Supports defineShape2
+Supports defineShape3
+Supports defineShape4
+Supports defineMorphShape
+Supports defineMorphShape2
+
+Supports defineSound
+Supports soundStreamBlock
+Supports soundStreamHead
+Supports soundStreamHead2
+	- Uncompressed, NE (experimental - needs test)
+	- ADPCM (incomplete) **********************
+	- MP3
+	- Uncompressed, LE
+	- Nellymoser 16 kHz (not started - don't know of a player to test with) **********************
+	- Nellymoser 8 kHz (not started) **********************
+	- Nellymoser (not started) **********************
+	- Speex (needs test) **********************
+
+Supports defineVideoStream
+Supports videoFrame
+	- Sorenson Spark (H.263)
+	- Screen Video
+	- On2 Truemotion VP6
+	- On2 Truemotion VP6 Alpha
+	- Screen Video V2 (experimental - needs test)
+	- H.264 (needs test / not embeddable?) **********************
+	
+Unsupported:
+Bitmap patterns on shapes
+Morph shape animation
+Speex
+Nellymoser
+ADPCM
+Screen Video V2
+H.264

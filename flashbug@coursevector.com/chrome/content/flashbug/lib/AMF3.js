@@ -253,7 +253,7 @@ Flashbug.AMF3.prototype = {
 			for(var i = 0; i < classMemberCount; ++i) {
 				classMembers.push(this.readString(ba));
 			}
-			
+			if (className.length == 0) className = 'Object';
 			traits = { type:className, members:classMembers, count:classMemberCount, externalizable:isExternalizable, dynamic:isDynamic };
 			this.readTraitsCache.push(traits);
 		}
@@ -282,7 +282,7 @@ Flashbug.AMF3.prototype = {
 					}
 				}
 			} catch (e) {
-				ERROR("AMF3::readObject - Error : Unable to read externalizable data type '" + traits.type + "'  -  " + e);
+				ERROR("AMF3::readObject - Error : Unable to read externalizable data type '" + traits.type + "'  |  " + e);
 				obj = "Unable to read externalizable data type '" + traits.type + "'";
 			}
 		} else {
@@ -305,7 +305,7 @@ Flashbug.AMF3.prototype = {
 			}
 		}
 		
-		if(traits.type) obj.__className = traits.type;
+		if(traits) obj.__traits = traits;
 		
 		return obj;
 	},
@@ -422,10 +422,7 @@ Flashbug.AMF3.Flex.AbstractMessage.prototype = {
 				if ((flags & DESTINATION_FLAG) != 0) this.destination = parser.readData(ba);
 				if ((flags & HEADERS_FLAG) != 0) this.headers = parser.readData(ba);
 				if ((flags & MESSAGE_ID_FLAG) != 0) this.messageId = parser.readData(ba);
-				if ((flags & TIMESTAMP_FLAG) != 0) {
-					this.timestamp = parser.readData(ba);
-					dump('timestamp ' + this.timestamp + '\n');
-				}
+				if ((flags & TIMESTAMP_FLAG) != 0) this.timestamp = parser.readData(ba);
 				if ((flags & TIME_TO_LIVE_FLAG) != 0) this.timeToLive = parser.readData(ba);
 				reservedPosition = 7;
 			} else if (i == 1) {
@@ -510,7 +507,7 @@ Flashbug.AMF3.Flex.AsyncMessage.prototype.readExternal = function(ba, parser) {
 		// For forwards compatibility, read in any other flagged objects
 		// to preserve the integrity of the input stream...
 		if ((flags >> reservedPosition) != 0) {
-			for (var j = reservedPosition; j < 6; j++) {
+			for (var j = reservedPosition; j < 6; ++j) {
 				if (((flags >> j) & 1) != 0) parser.readData(ba);
 			}
 		}
@@ -533,14 +530,14 @@ Flashbug.AMF3.Flex.AcknowledgeMessage.prototype.readExternal = function(ba, pars
 	Flashbug.AMF3.Flex.AsyncMessage.prototype.readExternal.call(this, ba, parser);
 	
 	var flagsArray = this.readFlags(ba);
-	for (var i = 0; i < flagsArray.length; i++) {
+	for (var i = 0; i < flagsArray.length; ++i) {
 		var flags = flagsArray[i],
 		reservedPosition = 0;
 		
 		// For forwards compatibility, read in any other flagged objects
 		// to preserve the integrity of the input stream...
 		if ((flags >> reservedPosition) != 0) {
-			for (var j = reservedPosition; j < 6; j++) {
+			for (var j = reservedPosition; j < 6; ++j) {
 				if (((flags >> j) & 1) != 0) parser.readData(ba);
 			}
 		}
@@ -566,7 +563,7 @@ Flashbug.AMF3.Flex.CommandMessage.prototype.readExternal = function(ba, parser) 
 	Flashbug.AMF3.Flex.AsyncMessage.prototype.readExternal.call(this, ba, parser);
 	
 	var flagsArray = this.readFlags(ba);
-	for (var i = 0; i < flagsArray.length; i++) {
+	for (var i = 0; i < flagsArray.length; ++i) {
 		var flags = flagsArray[i],
 		reservedPosition = 0,
 		operationNames = [
@@ -590,7 +587,7 @@ Flashbug.AMF3.Flex.CommandMessage.prototype.readExternal = function(ba, parser) 
 		// For forwards compatibility, read in any other flagged objects
 		// to preserve the integrity of the input stream...
 		if ((flags >> reservedPosition) != 0) {
-			for (var j = reservedPosition; j < 6; j++) {
+			for (var j = reservedPosition; j < 6; ++j) {
 				if (((flags >> j) & 1) != 0) parser.readData(ba);
 			}
 		}

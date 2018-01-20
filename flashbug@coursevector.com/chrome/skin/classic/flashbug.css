@@ -1,0 +1,16 @@
+﻿/* See license.txt for terms of usage */
+
+@import "chrome://flashbug/skin/console.css";
+@import "chrome://flashbug/skin/sharedobject.css";
+@import "chrome://flashbug/skin/decompiler.css";
+@import "chrome://flashbug/skin/amf.css";
+/*@import "chrome://flashbug/skin/inspector.css";*/
+
+/* XUL Links */
+.flb-link {
+	text-decoration: none;
+	border-bottom: dotted 1px;
+	color: blue;
+	color: -moz-nativehyperlinktext;
+	cursor: pointer;
+}

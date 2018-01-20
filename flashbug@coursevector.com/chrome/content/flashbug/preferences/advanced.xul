@@ -1,0 +1,62 @@
+<?xml version="1.0"?>
+<overlay id="AdvPaneOverlay" xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
+	
+    <prefpane id="paneAdvanced" onpaneload="advPane.init();" >
+		<preferences>
+		  <preference id="extensions.firebug.flashbug.enableSWFHeaderOnly" name="extensions.firebug.flashbug.enableSWFHeaderOnly" type="bool"/>
+		  <preference id="extensions.firebug.flashbug.enableSWFFont" name="extensions.firebug.flashbug.enableSWFFont" type="bool"/>
+		  <preference id="extensions.firebug.flashbug.enableSWFBinary" name="extensions.firebug.flashbug.enableSWFBinary" type="bool"/>
+		  <preference id="extensions.firebug.flashbug.enableSWFVideo" name="extensions.firebug.flashbug.enableSWFVideo" type="bool"/>
+		  <preference id="extensions.firebug.flashbug.enableSWFShape" name="extensions.firebug.flashbug.enableSWFShape" type="bool"/>
+		  <preference id="extensions.firebug.flashbug.enableSWFMorph" name="extensions.firebug.flashbug.enableSWFMorph" type="bool"/>
+		  <preference id="extensions.firebug.flashbug.enableSWFImage" name="extensions.firebug.flashbug.enableSWFImage" type="bool"/>
+		  <preference id="extensions.firebug.flashbug.enableSWFSound" name="extensions.firebug.flashbug.enableSWFSound" type="bool"/>
+		  <preference id="extensions.firebug.flashbug.enableSWFText" name="extensions.firebug.flashbug.enableSWFText" type="bool"/>
+		</preferences>
+		
+		<script src="chrome://flashbug/content/preferences/advanced.js"/>
+		
+		<groupbox>
+			<caption id="swfDesc" label="flashbug.pref.swf.title"/>
+			<checkbox id="enableSWFHeaderOnly" label="flashbug.pref.enableSWFHeaderOnly" tooltiptext="flashbug.pref.enableSWFHeaderOnly.tooltip" preference="extensions.firebug.flashbug.enableSWFHeaderOnly" oncommand="advPane.onSWFConfig();" />
+			
+			<grid>
+				<columns>
+					<column flex="1" />
+					<column flex="1" />
+					<column flex="1" />
+				</columns>
+				<rows>
+					<row>
+						<checkbox id="enableSWFFont" label="flashbug.pref.enableSWFFont" tooltiptext="flashbug.pref.enableSWFFont.tooltip" preference="extensions.firebug.flashbug.enableSWFFont" oncommand="advPane.onSWFConfig();" />
+						<checkbox id="enableSWFText" label="flashbug.pref.enableSWFText" tooltiptext="flashbug.pref.enableSWFText.tooltip" preference="extensions.firebug.flashbug.enableSWFText" />
+					</row>
+					<row>
+						<checkbox id="enableSWFVideo" label="flashbug.pref.enableSWFVideo" tooltiptext="flashbug.pref.enableSWFVideo.tooltip" preference="extensions.firebug.flashbug.enableSWFVideo" />
+						<checkbox id="enableSWFShape" label="flashbug.pref.enableSWFShape" tooltiptext="flashbug.pref.enableSWFShape.tooltip" preference="extensions.firebug.flashbug.enableSWFShape" />
+						<checkbox id="enableSWFMorph" label="flashbug.pref.enableSWFMorph" tooltiptext="flashbug.pref.enableSWFMorph.tooltip" preference="extensions.firebug.flashbug.enableSWFMorph" />
+					</row>
+					<row>
+						<checkbox id="enableSWFImage" label="flashbug.pref.enableSWFImage" tooltiptext="flashbug.pref.enableSWFImage.tooltip" preference="extensions.firebug.flashbug.enableSWFImage" />
+						<checkbox id="enableSWFSound" label="flashbug.pref.enableSWFSound" tooltiptext="flashbug.pref.enableSWFSound.tooltip" preference="extensions.firebug.flashbug.enableSWFSound" />
+						<checkbox id="enableSWFBinary" label="flashbug.pref.enableSWFBinary" tooltiptext="flashbug.pref.enableSWFBinary.tooltip" preference="extensions.firebug.flashbug.enableSWFBinary" />
+					</row>
+				</rows>
+			</grid>
+		</groupbox>
+		
+		<groupbox flex="1" orient="vertical">
+			<caption id="mmDesc2" label="flashbug.pref.mm.title" />
+			<richlistbox id="mmView" orient="vertical" flex="1">
+				<listheader equalsize="always" style="border: 0; padding: 0; -moz-appearance: none;">
+					<treecol id="typeColumn" label="Setting" value="type" persist="sortDirection" flex="1" sortDirection="ascending" onclick="advPane.sort(event);"/>
+					<treecol id="actionColumn" label="Value" value="action" persist="sortDirection" flex="1" onclick="advPane.sort(event);" />
+				</listheader>
+			</richlistbox>
+			<hbox>
+				<image src="chrome://flashbug/skin/dialog-warning.png" height="16" width="16"/>
+				<label id="lblUndocumented" value="flashbug.pref.pane.undocumented" />
+			</hbox>
+		</groupbox>
+	</prefpane>
+</overlay>

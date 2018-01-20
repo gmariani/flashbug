@@ -19,7 +19,9 @@ var DEFLATE_CODE_LENGTH_ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3,
 var fromCharCode = String.fromCharCode,
 pow = Math.pow,
 min = Math.min,
-max = Math.max;
+max = Math.max,
+TWOeN23 = pow(2, -23),
+TWOeN52 = pow(2, -52);
 	
 function buildHuffTable(bitLengths) {
 	var numLengths = bitLengths.length,
@@ -76,7 +78,8 @@ Flashbug.ByteArrayString = function(data, endian) {
 	t._bitPosition = 8;
 	
 	// Convert to data
-	for (var i = 0; data[i]; i++) {
+	for (var i = 0; i < t.length; i++) {
+	//for (var i = 0; data[i]; i++) {
 		buff.push(fromCharCode(data.charCodeAt(i) & 0xff));
 	}
 	t._buffer = buff.join('');
@@ -340,6 +343,14 @@ Flashbug.ByteArrayString.prototype = {
 	writeSI32: function(value, bigEnd) {
 		this.writeSNumber(4, value, bigEnd);
 	},
+	
+	readSI64: function(bigEnd) {
+		return this.readSNumber(8, bigEnd);
+	},
+	
+	writeSI64: function(value, bigEnd) {
+		this.writeSNumber(8, value, bigEnd);
+	},
 
 	readUI8: function() {
 		return this.readNumber(1);
@@ -371,6 +382,14 @@ Flashbug.ByteArrayString.prototype = {
 	
 	writeUI32: function(value, bigEnd) {
 		this.writeNumber(4, value, bigEnd);
+	},
+	
+	readUI64: function(bigEnd) {
+		return this.readNumber(8, bigEnd);
+	},
+	
+	writeUI64: function(value, bigEnd) {
+		this.writeNumber(8, value, bigEnd);
 	},
 
 	/////////////////////////////////////////////////////////
@@ -451,18 +470,41 @@ Flashbug.ByteArrayString.prototype = {
 		return val;
 	},
 
-	readFloat: function() {
-		return this._readFloatingPoint(8, 23);
+	readFloat: function(bigEnd) {
+		var t = this;
+		
+		if (bigEnd == undefined) bigEnd = !!(this.endian == Flashbug.ByteArrayString.BIG_ENDIAN);
+		if (bigEnd) {
+			var pos = (t.position += 4) - 4,
+				b1 = t.readByteAt(pos),
+				b2 = t.readByteAt(++pos),
+				b3 = t.readByteAt(++pos),
+				b4 = t.readByteAt(++pos);
+		} else {
+			var pos = (t.position += 4),
+				b1 = t.readByteAt(--pos),
+				b2 = t.readByteAt(--pos),
+				b3 = t.readByteAt(--pos),
+				b4 = t.readByteAt(--pos);
+		}
+		
+		var sign = 1 - ((b1 >> 7) << 1),
+			exp = (((b1 << 1) & 0xFF) | (b2 >> 7)) - 127,
+			sig = ((b2 & 0x7F) << 16) | (b3 << 8) | b4;
+		if (sig == 0 && exp == -127) return 0.0;
+		
+		return sign * (1 + TWOeN23 * sig) * pow(2, exp);
+		
+		//return this._readFloatingPoint(8, 23);
 	},
 
 	readFloat16: function() {
-		return this._readFloatingPoint(5, 10);
+		//return this._readFloatingPoint(5, 10);
 	},
 
+	// 8 byte IEEE-754 double precision floating point value in network byte order (sign bit in low memory).
 	readDouble: function(bigEnd) {
-		// correct 1282653634986
-		var t = this, TWOeN52 = pow(2, -52);
-		
+		var t = this;
 		if (bigEnd == undefined) bigEnd = !!(this.endian == Flashbug.ByteArrayString.BIG_ENDIAN);
 		if (bigEnd) {
 			var pos = (t.position += 8) - 8,
@@ -486,6 +528,35 @@ Flashbug.ByteArrayString.prototype = {
 				b8 = t.readByteAt(--pos);
 		}
 		
+		// v3
+		var s = (b1 >> 7) & 0x1;
+		var e = ((b1 & 0x7f) << 4) | ((b2 & 0xf0) >> 4);
+		var f = ((b2 & 0x0f) * pow(2,48)) +
+				(b3 * pow(2,40)) +
+				(b4 * pow(2,32)) +
+				(b5 * pow(2,24)) +
+				(b6 * pow(2,16)) +
+				(b7 * pow(2, 8)) +
+				b8;
+	 
+		if (e === 2047) {
+			if (f !== 0) {
+				return Number.NaN;
+			} else if (s) {
+				return -Infinity;
+			} else {
+				return Infinity;
+			}
+		} else if (e > 0) {
+			return (s?-1:1) * pow(2,e-1023) * (1 + f / 0x10000000000000);
+		} else if (f !== 0) {
+			return (s?-1:1) * pow(2,-1022) * (f / 0x10000000000000);
+		} else {
+			return s ? -0 : 0;
+		}
+		
+		// v2 wrong  256.0000001145527 instead of 379
+		/*
 		var sign = 1 - ((b1 >> 7) << 1);									// sign = bit 0
 		var exp = (((b1 << 4) & 0x7FF) | (b2 >> 4)) - 1023;					// exponent = bits 1..11
 		
@@ -497,9 +568,11 @@ Flashbug.ByteArrayString.prototype = {
 		
 		sig = parseInt(sig, 2);
 		if (sig == 0 && exp == -1023) return 0.0;
-		return sign * (1.0 + TWOeN52 * sig) * pow(2, exp);
+		var val = sign * (1.0 + TWOeN52 * sig) * pow(2, exp);
+		trace2('readDouble bigEnd: ' + bigEnd + ' val: ' + val);
+		return val;*/
 		
-		// wrong  1.14669963550697e-305
+		// v1 wrong  1.14669963550697e-305 should be 1282653634986
 		//return this._readFloatingPoint(11, 52);
 	},
 
@@ -593,12 +666,19 @@ Flashbug.ByteArrayString.prototype = {
 	},
 
 	readSB: function(numBits) {
+		if(!numBits) return 0;
+		
 		var val = this.readUB(numBits);
 		
+		// SWFWire
+		var leadingDigit = val >>> (numBits - 1);
+		if (leadingDigit == 1) return -((~val & (~0 >>> -numBits)) + 1);
+		return val;
+		
 		// SWFAssist
-		var shift = 32 - numBits;
-		var result = (val << shift) >> shift;
-		return result;
+		//var shift = 32 - numBits;
+		//var result = (val << shift) >> shift;
+		//return result;
 		
 		// Gordon
 		//if (val >> (numBits - 1)) val -= pow(2, numBits);
@@ -709,8 +789,6 @@ Flashbug.ByteArrayString.prototype = {
 	terminators, just as for ASCII strings.
 	*/
 	readString: function(numChars, simple) {
-		// TODO: If Flash 5- read ANSI or shift-JIS
-		
 		var t = this, b = t._buffer, str = null;
 		if (undefined != numChars) {
 			str = b.substr(t.position, numChars);
@@ -771,6 +849,31 @@ Flashbug.ByteArrayString.prototype = {
 	// Color records
 	/////////////////////////////////////////////////////////
 
+	readCXForm: function(alpha) {
+		var o = {
+			hasAddTerms: this.readBoolean(),
+			hasMultTerms: this.readBoolean(),
+			Nbits: this.readUB(4)
+		}
+		if (o.hasMultTerms) {
+			o.redMultTerm = this.readSB(o.Nbits);
+			o.greenMultTerm = this.readSB(o.Nbits);
+			o.blueMultTerm = this.readSB(o.Nbits);
+			if (alpha) o.alphaMultTerm = this.readSB(o.Nbits);
+		}
+		if (o.hasAddTerms) {
+			o.redAddTerm = this.readSB(o.Nbits);
+			o.greenAddTerm = this.readSB(o.Nbits);
+			o.blueAddTerm = this.readSB(o.Nbits);
+			if (alpha) o.alphaAddTerm = this.readSB(o.Nbits);
+		}
+		return o;
+	},
+	
+	readCXFormWithAlpha: function() {
+		return this.readCXForm(true);
+	},
+
 	readRGB: function() {
 		return {
 			red: this.readUI8(),
@@ -821,27 +924,28 @@ Flashbug.ByteArrayString.prototype = {
 		var t = this,
 			hasScale = t.readBool();
 		if (hasScale) {
-			var numBits = t.readUB(5),
-				scaleX = t.readFB(numBits),
-				scaleY = t.readFB(numBits);
+			var NScaleBits = t.readUB(5),
+				scaleX = t.readFB(NScaleBits),
+				scaleY = t.readFB(NScaleBits);
 		} else {
-			var scaleX = scaleY = 1.0;
+			var scaleX = scaleY = 1.0, NScaleBits = null;
 		}
 		
 		var hasRotation = t.readBool();
 		if (hasRotation) {
-			var numBits = t.readUB(5),
-				skewX = t.readFB(numBits),
-				skewY = t.readFB(numBits);
+			var NRotateBits = t.readUB(5),
+				skewX = t.readFB(NRotateBits),
+				skewY = t.readFB(NRotateBits);
 		} else {
 			var skewX =  skewY = 0.0;
 		}
 		
-		var numBits = t.readUB(5);
+		var NTranslateBits = t.readUB(5);
 			matrix = {
-				scaleX: scaleX, scaleY: scaleY,
-				skewX: skewX, skewY: skewY,
-				moveX: t.readSB(numBits), moveY: t.readSB(numBits)
+				NScaleBits:NScaleBits,
+				scaleX: scaleX / 20, scaleY: scaleY / 20,
+				skewX: skewX / 20, skewY: skewY / 20,
+				moveX: t.readSB(NTranslateBits) / 20, moveY: t.readSB(NTranslateBits) / 20
 			};
 		t.align();
 		return matrix;

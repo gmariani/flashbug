@@ -11,21 +11,21 @@ const SPL_MIME = "application/x-futuresplash";
 var $FL_STR = Flashbug.$FL_STR,
 $FL_STRF = Flashbug.$FL_STRF;
 
-Firebug.SWFInfoTab = extend(Firebug.Module, {
+function trace(msg, obj) {
+	msg = "Flashbug - SWFTab::" + msg;
+	if (FBTrace.DBG_FLASH_SWF_TAB) {
+		if (typeof FBTrace.sysout == "undefined") {
+			Flashbug.alert(msg + " | " + obj);
+		} else {
+			FBTrace.sysout(msg, obj);
+		}
+	}
+}
+
+Flashbug.SWFInfoModule = extend(Firebug.Module, {
 	
 	tabId: "SWF",
 	childTabs: 0,
-	
-	trace: function(msg, obj) {
-		msg = "Flashbug - SWFTab::" + msg;
-		if (FBTrace.DBG_FLASH_SWF) {
-			if (typeof FBTrace.sysout == "undefined") {
-				Flashbug.alert(msg + " | " + obj);
-			} else {
-				FBTrace.sysout(msg, obj);
-			}
-		}
-	},
 	
 	// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 	// Extends Module
@@ -33,7 +33,7 @@ Firebug.SWFInfoTab = extend(Firebug.Module, {
 	dispatchName: "SWFViewer",
 	
     initialize: function() {
-		this.trace("initialize");
+		trace("initialize");
 		
 		Firebug.Module.initialize.apply(this, arguments);
 		
@@ -41,7 +41,7 @@ Firebug.SWFInfoTab = extend(Firebug.Module, {
     },
 	
     shutdown: function() {
-		this.trace("shutdown");
+		trace("shutdown");
 		
 		Firebug.Module.shutdown.apply(this, arguments);
 		
@@ -52,7 +52,7 @@ Firebug.SWFInfoTab = extend(Firebug.Module, {
 	// Extends NetInfoBody
 
     initTabBody: function(infoBox, file) {
-		this.trace("initTabBody");
+		trace("initTabBody");
 		if (this.isSWF(safeGetContentType(file.request)) && file.loaded) {
 			Firebug.NetMonitor.NetInfoBody.appendTab(infoBox, this.tabId, $FL_STR("flashbug.netInfoSWF.title"));
 		}
@@ -65,7 +65,7 @@ Firebug.SWFInfoTab = extend(Firebug.Module, {
 		var tab = infoBox.selectedTab;
 		var tabId = tab.getAttribute('view'); // this.tabId
 		
-		this.trace('updateTabBody ' + file.href + ' | ' + 'netInfo' + tabId + 'Tab', tab);
+		trace('updateTabBody ' + file.href + ' | ' + 'netInfo' + tabId + 'Tab', tab);
 		
 		// Generate content only for the first time; and only if our tab has been just activated.
 		if (tabId.indexOf(this.tabId) != 0) return;
@@ -81,27 +81,27 @@ Firebug.SWFInfoTab = extend(Firebug.Module, {
 		// Request
 		if(!file['response' + tabId]) {
 			// Add processing message
-			Firebug.FlashbugModel.NetInfoSWF.loadingTag.replace({}, tabBody);
+			Flashbug.SWFInfoModule.NetInfoSWF.loadingTag.replace({}, tabBody);
 			
 			try {
 				var worker = new Worker('chrome://flashbug/content/lib/SWFWorker.js');
 				worker.onmessage = function(event) {
 					if (event.data.type == 'debug') {
 						var arr = event.data.message,
-						title = arr.shift();
-						t.trace('Worker trace - ' + title, arr);
+							title = arr.shift();
+						trace('Worker trace - ' + title, arr);
 					} else {
-						t.trace('Worker message data', event.data);
+						trace('Worker message data', event.data);
 						file['response' + tabId] = t.processData(event.data);
-						t.trace('Worker message', file['response' + tabId]);
+						trace('Worker message', file['response' + tabId]);
 						
 						// Generate UI using Domplate template
 						t.displayData(file['response' + tabId], tabBody, infoBox, file);
 					}
 				};
 				worker.onerror = function(error) {
-					t.trace('Worker error', error);
-					Firebug.FlashbugModel.NetInfoSWF.messageTag.replace({ param:{name:$FL_STR('flashbug.netInfoSWF.colError.title'), value:$FL_STR('flashbug.netInfoSWF.error.deflate') + ' (' + error.message + ')'}}, tabBody);
+					trace('Worker error', error);
+					Flashbug.SWFInfoModule.NetInfoSWF.messageTag.replace({ param:{name:$FL_STR('flashbug.netInfoSWF.colError.title'), value:$FL_STR('flashbug.netInfoSWF.error.deflate') + ' (' + error.message + ')'}}, tabBody);
 				};
 				
 				// Returns raw bytes without UTF conversion done by Firebug
@@ -111,7 +111,7 @@ Firebug.SWFInfoTab = extend(Firebug.Module, {
 					var responseText = file['responseText' + idx];
 				} else {
 					// Actual page swf
-					var responseText = Flashbug.getResponseText(file.href);
+					var responseText = getResource(file.href);
 				}
 				var config = {};
 				config.headerOnly = Firebug.getPref(Firebug.prefDomain, 'flashbug.enableSWFHeaderOnly');
@@ -127,7 +127,7 @@ Firebug.SWFInfoTab = extend(Firebug.Module, {
 				worker.postMessage({text:responseText, config:config});
 			} catch (e) {
 				ERROR(e);
-				Firebug.FlashbugModel.NetInfoSWF.messageTag.replace({ param:{name:$FL_STR('flashbug.netInfoSWF.colError.title'), value:$FL_STR('flashbug.netInfoSWF.error.deflate') + ' (' + e.message + ')'}}, tabBody);
+				Flashbug.SWFInfoModule.NetInfoSWF.messageTag.replace({ param:{name:$FL_STR('flashbug.netInfoSWF.colError.title'), value:$FL_STR('flashbug.netInfoSWF.error.deflate') + ' (' + e.message + ')'}}, tabBody);
 			}
 		} else {
 			this.displayData(file['response' + tabId], tabBody, infoBox, file);
@@ -135,14 +135,14 @@ Firebug.SWFInfoTab = extend(Firebug.Module, {
 	},
 	
 	isSWF: function(contentType) {
-		this.trace(contentType + ' :: ' + SWF_MIME + '/' + SPL_MIME);
+		trace(contentType + ' :: ' + SWF_MIME + '/' + SPL_MIME);
 		if (!contentType) return false;
 		if (contentType.indexOf(SWF_MIME) == 0 || contentType.indexOf(SPL_MIME) == 0) return true;
 		return false;
 	},
 	
 	displayData: function(data, tabBody, infoBox, file) {
-		Firebug.FlashbugModel.NetInfoSWF.doc = tabBody.ownerDocument;
+		Flashbug.SWFInfoModule.NetInfoSWF.doc = tabBody.ownerDocument;
 		
 		// Copied from XMLViewer // 
 		// Override getHidden in these templates. The parsed XML documen is
@@ -164,7 +164,7 @@ Firebug.SWFInfoTab = extend(Firebug.Module, {
 		
 		var l = data.length;
 		for(var i = 0; i < l; i++) {
-			var tag = Firebug.FlashbugModel.NetInfoSWF.getSectionTag(data[i]),
+			var tag = Flashbug.SWFInfoModule.NetInfoSWF.getSectionTag(data[i]),
 				o = {section:data[i], infoBox:infoBox, file:file};
 			if (i == 0) {
 				tag.replace(o, tabBody);
@@ -193,7 +193,7 @@ Firebug.SWFInfoTab = extend(Firebug.Module, {
 		}
 		//
 		
-		this.trace('Worker message html', tabBody);
+		trace('Worker message html', tabBody);
 	},
 	
 	processThumbs: function(tabBody, sectionClass) {
@@ -278,13 +278,13 @@ Firebug.SWFInfoTab = extend(Firebug.Module, {
 		if(obj.hasOwnProperty('metadata')) {
 			var regex = /<xmp:creatortool>([^<]+)<\/xmp:creatortool>/i;
 			var result = regex.exec(obj.metadata);
-			//this.trace('creator', result);
+			//trace('creator', result);
 			var value = result ? result[1] : null;
 			if (value) arrMetadata.push({name:'Created With', value:value});
 			
 			regex = /<xmp:modifydate>([^<]+)<\/xmp:modifydate>/i;
 			result = regex.exec(obj.metadata);
-			//this.trace('modify', result);
+			//trace('modify', result);
 			value = result ? result[1] : null;
 			if (value) arrMetadata.push({name:'Compilation Date', value:new Date(value).toLocaleString()});
 			
@@ -486,11 +486,11 @@ const VideoDeblocking = [
 	'ing Level 4'
 ];
 
-Firebug.FlashbugModel.NetInfoSWF = domplate(Firebug.Rep, {
+Flashbug.SWFInfoModule.NetInfoSWF = domplate(Firebug.Rep, {
 	inspectable: false,
 	
 	ERROR: ERROR,
-	trace: Firebug.SWFInfoTab.trace,
+	trace: Flashbug.SWFInfoModule.trace,
 	
 	doc:null,
 	
@@ -528,7 +528,7 @@ Firebug.FlashbugModel.NetInfoSWF = domplate(Firebug.Rep, {
 						TR({'role': 'listitem'},
 							TD({'class': 'netInfoParamName', 'role': 'presentation'}),
 							TD({"class": "flb-swf-font-row", "role": "list", "aria-label": "$param.name"},
-								P({'class': 'flb-swf-font-box flb-swf-font-name'}, '$param.name'),
+								P({'class': 'flb-swf-font-box'}, '$param.name'),
 								P({'class': 'flb-swf-font-box flb-swf-font-copy'}, '$param|getFontCaption'),
 								P({'class': 'flb-swf-font-box flb-swf-font-copy'}, '$param.value.info.copyright'),
 								DIV({'class': 'flb-swf-thumb-caption flb-swf-thumb-export $param|hasData', onclick: '$onSave', _dataID: '$param|getParamName', _dataType: '$param.value.type'}, $FL_STR('flashbug.netInfoAMF.save'))
@@ -734,7 +734,7 @@ Firebug.FlashbugModel.NetInfoSWF = domplate(Firebug.Rep, {
 						TR({'role': 'listitem'},
 							TD({'class': 'netInfoParamName', 'role': 'presentation'}),
 							TD({"class": "flb-swf-font-row", "role": "list", "aria-label": "$param.name"},
-								P({'class': 'flb-swf-font-box flb-swf-font-name'}, '$param.name'),
+								P({'class': 'flb-swf-font-box'}, '$param.name'),
 								FOR('color', '$param.value.colors',
 									DIV({}, 
 										SPAN({'class': 'flb-swf-font-box flb-swf-font-copy'}, '$color|getHex'),
@@ -837,7 +837,7 @@ Firebug.FlashbugModel.NetInfoSWF = domplate(Firebug.Rep, {
 	},
 	
 	getSVGTag: function(obj) {
-		//this.trace('getSVGTag', obj);
+		//trace('getSVGTag', obj);
 		var value = obj.hasOwnProperty('value') ? obj.value : obj;
 		return value.svgHeaderThumb + value.data;
 	},
@@ -934,14 +934,14 @@ Firebug.FlashbugModel.NetInfoSWF = domplate(Firebug.Rep, {
 		var timeout = CCIN('@mozilla.org/timer;1', 'nsITimer'),
 			tabBody = getAncestorByClass(event.target, 'netInfoText');
 		timeout.initWithCallback({ notify:function(timer) {
-			Firebug.SWFInfoTab.processThumbs(tabBody, 'flb-swf-images');
+			Flashbug.SWFInfoModule.processThumbs(tabBody, 'flb-swf-images');
 		} }, 500, Ci.nsITimer.TYPE_ONE_SHOT);
 	},
 	
 	onSave: function(event) {
         var obj = this.getData(event.target);
 		if(!obj) {
-			this.trace('onSave - Can\'t find data object!');
+			trace('onSave - Can\'t find data object!');
 			return;
 		}
 		
@@ -962,16 +962,16 @@ Firebug.FlashbugModel.NetInfoSWF = domplate(Firebug.Rep, {
 		var infoBox = target.infoBox;
 		var obj = this.getData(target);
 		if(!obj) {
-			this.trace('onDetail - Can\'t find data object!');
+			trace('onDetail - Can\'t find data object!');
 			return;
 		}
 		
 		// Create Tab
 		if (!file['response' + obj.value.tabId]) {
-			obj.value.tabId = Firebug.SWFInfoTab.tabId + (++Firebug.SWFInfoTab.childTabs);
+			obj.value.tabId = Flashbug.SWFInfoModule.tabId + (++Flashbug.SWFInfoModule.childTabs);
 			obj.value.tabName = this.getFileName(obj) + ' ' + $FL_STR("flashbug.netInfoSWF.title");
-			file['responseText' + Firebug.SWFInfoTab.childTabs] = obj.value.data;
-			this.trace('onDetail - Append Tab: ' + obj.value.tabId + ' Title:' + obj.value.tabName, infoBox);
+			file['responseText' + Flashbug.SWFInfoModule.childTabs] = obj.value.data;
+			trace('onDetail - Append Tab: ' + obj.value.tabId + ' Title:' + obj.value.tabName, infoBox);
 			Firebug.NetMonitor.NetInfoBody.appendTab(infoBox, obj.value.tabId, obj.value.tabName);
 		}
 		
@@ -1137,19 +1137,19 @@ Firebug.FlashbugModel.NetInfoSWF = domplate(Firebug.Rep, {
 	
 	getSectionTag: function(param) {
 		var name = param.name;
-		if(name == 'Fonts') return Firebug.FlashbugModel.NetInfoSWF.sectionFontTag;
-		if(name == 'Binary') return Firebug.FlashbugModel.NetInfoSWF.sectionBinaryTag;
-		if(name == 'Videos') return Firebug.FlashbugModel.NetInfoSWF.sectionVideoTag;
-		if(name == 'Shapes') return Firebug.FlashbugModel.NetInfoSWF.sectionShapeTag;
-		if(name == 'Morph Shapes') return Firebug.FlashbugModel.NetInfoSWF.sectionMorphShapeTag;
-		if(name == 'Images') return Firebug.FlashbugModel.NetInfoSWF.sectionImageTag;
-		if(name == 'Sounds') return Firebug.FlashbugModel.NetInfoSWF.sectionSoundTag;
-		if(name == 'Text') return Firebug.FlashbugModel.NetInfoSWF.sectionTextTag;
-		return Firebug.FlashbugModel.NetInfoSWF.sectionMetaTag;
+		if(name == 'Fonts') return Flashbug.SWFInfoModule.NetInfoSWF.sectionFontTag;
+		if(name == 'Binary') return Flashbug.SWFInfoModule.NetInfoSWF.sectionBinaryTag;
+		if(name == 'Videos') return Flashbug.SWFInfoModule.NetInfoSWF.sectionVideoTag;
+		if(name == 'Shapes') return Flashbug.SWFInfoModule.NetInfoSWF.sectionShapeTag;
+		if(name == 'Morph Shapes') return Flashbug.SWFInfoModule.NetInfoSWF.sectionMorphShapeTag;
+		if(name == 'Images') return Flashbug.SWFInfoModule.NetInfoSWF.sectionImageTag;
+		if(name == 'Sounds') return Flashbug.SWFInfoModule.NetInfoSWF.sectionSoundTag;
+		if(name == 'Text') return Flashbug.SWFInfoModule.NetInfoSWF.sectionTextTag;
+		return Flashbug.SWFInfoModule.NetInfoSWF.sectionMetaTag;
 	},
 	
 	getValueTag: function(param) {
-		if(param.name == 'Background Color') return Firebug.FlashbugModel.NetInfoSWF.swatchTag;
+		if(param.name == 'Background Color') return Flashbug.SWFInfoModule.NetInfoSWF.swatchTag;
 		if(param.name == 'XMP') return Firebug.HTMLPanel.CompleteElement.tag; // HTMLHtmlElement CompleteElement SoloElement Element
 		return this.codeTag;
 	},
@@ -1167,7 +1167,7 @@ Firebug.FlashbugModel.NetInfoSWF = domplate(Firebug.Rep, {
 			// Error handling
 			var nsURI = 'http://www.mozilla.org/newlayout/xml/parsererror.xml';
 			if (root.namespaceURI == nsURI && root.nodeName == 'parsererror') {
-				/*Firebug.FlashbugModel.XMLError.tag.replace({error: {
+				/*Flashbug.ConsoleModule.XMLError.tag.replace({error: {
 				message: root.firstChild.nodeValue + " [" + text + "]",
 				source: root.lastChild.textContent
 				}}, node);*/
@@ -1311,16 +1311,14 @@ Firebug.FlashbugModel.NetInfoSWF = domplate(Firebug.Rep, {
 // Firebug Registration //
 //////////////////////////
 
-var fbVersion = Firebug.version.split('.');
-if (fbVersion[0] >= 1 && fbVersion[1] >= 6) {
-	if(CCSV("@mozilla.org/preferences-service;1", "nsIPrefBranch2").getBoolPref(Firebug.prefDomain + ".flashbug.enableSWF")) {
-		Firebug.registerModule(Firebug.SWFInfoTab);
-	}
+if(CCSV("@mozilla.org/preferences-service;1", "nsIPrefBranch2").getBoolPref(Firebug.prefDomain + ".flashbug.enableSWF")) {
+	Firebug.registerModule(Flashbug.SWFInfoModule);
 }
 
 /////////////////////////////
 // Firebug Trace Constants //
 /////////////////////////////
-FBTrace.DBG_FLASH_SWF = Firebug.getPref(Firebug.prefDomain, "DBG_FLASH_SWF");
+
+FBTrace.DBG_FLASH_SWF_TAB = Firebug.getPref(Firebug.prefDomain, "DBG_FLASH_SWF_TAB");
 
 }});

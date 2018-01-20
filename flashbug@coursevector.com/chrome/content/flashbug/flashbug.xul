@@ -14,8 +14,16 @@
 	<script type="application/x-javascript" src="chrome://flashbug/content/lib/AMF3.js"/>
 	<script type="application/x-javascript" src="chrome://flashbug/content/lib/AMF0.js"/>
 	
-	<!-- Log Panel -->
-	<script type="application/x-javascript" src="chrome://flashbug/content/flashbug.js"/>
+	<!-- Console Panel -->
+	<script type="application/x-javascript" src="chrome://flashbug/content/ConsolePanel.js"/>
+	
+	<!-- Inspector Panel -->
+	<script type="application/x-javascript" src="chrome://flashbug/content/FlashPanel.js"/>
+	<script type="application/x-javascript" src="chrome://flashbug/content/FlashAPIPanel.js"/>
+	
+	<!-- Decompile Panel -->
+	<script type="application/x-javascript" src="chrome://flashbug/content/DecompilePanel.js"/>
+	<script type="application/x-javascript" src="chrome://flashbug/content/DecompileTreePanel.js"/>
 	
 	<!-- Shared Object Panel -->
 	<script type="application/x-javascript" src="chrome://flashbug/content/SharedObjectPanel.js"/>
@@ -23,41 +31,23 @@
 	<!-- AMF Tab -->
 	<script type="application/x-javascript" src="chrome://flashbug/content/AMFInfoTab.js"/>
 	
-	<!-- SWF Tab -->
-	<script type="application/x-javascript" src="chrome://flashbug/content/SWFInfoTab.js"/>
-	
 	<stringbundleset id="stringbundleset">
         <stringbundle id="strings_flashbug" src="chrome://flashbug/locale/flashbug.properties"/>
     </stringbundleset>
 	
 	<commandset id="mainCommandSet">
-		<command id="cmd_flbClear" 		oncommand="Firebug.FlashbugModel.onClear(FirebugContext)"/>
-		<command id="cmd_flbPause" 		oncommand="Firebug.FlashbugModel.onPause(FirebugContext)"/>
-		<command id="cmd_flbPlay"  		oncommand="Firebug.FlashbugModel.onPlay(FirebugContext)"/>
-		<command id="cmd_flbOpen"  		oncommand="Firebug.FlashbugModel.onOpen(FirebugContext)"/>
+		<command id="cmd_flbClear" 		oncommand="Firebug.ConsoleModule.onClear(Flashbug.getContext())"/>
+		<command id="cmd_flbPause" 		oncommand="Firebug.ConsoleModule.onPause(Flashbug.getContext())"/>
+		<command id="cmd_flbPlay"  		oncommand="Firebug.ConsoleModule.onPlay(Flashbug.getContext())"/>
+		<command id="cmd_flbOpen"  		oncommand="Firebug.ConsoleModule.onOpen(Flashbug.getContext())"/>
 		
-		<command id="cmd_flbRefresh" 	oncommand="Firebug.FlashbugSOLModel.refresh(FirebugContext)"/>
-		<command id="cmd_flbDelete" 	oncommand="Firebug.FlashbugSOLModel.deleteAll(FirebugContext)"/>
+		<command id="cmd_flbRefresh" 	oncommand="Firebug.SOLModule.refresh(Flashbug.getContext())"/>
+		<command id="cmd_flbDelete" 	oncommand="Firebug.SOLModule.deleteAll(Flashbug.getContext())"/>
+		
+		<command id="cmd_flbInspect" 	oncommand="Firebug.FlashModule.toggleInspect()"/>
 	</commandset>
 
-	<hbox id="fbToolbarInner" insertbefore="fbDetachButton" class="innerToolbar" flex="1" align="center">
-		<html:object id="objFlash" 
-			name="objFlash" 
-			width="1" height="1" 
-			type="application/x-shockwave-flash" 
-			data="chrome://flashbug/content/version.swf">
-			<param name="swLiveConnect" value="true" />
-			<param name="allowScriptAccess" value="always" />
-		</html:object>
-		
-		<!--<hbox id="fbNetButtons" collapsed="true">
-			<hbox id="fbNetButtonsFilter" class="noTabStop">
-				<toolbarbutton id="fbNetFilter-amf" label="AMF" type="radio" insertafter="fbNetFilter-xhr" 
-					tooltiptext="ActionMessageFormat"
-					class="toolbar-text-button" group="firebugNetFilter"
-					oncommand="Firebug.NetMonitor.onToggleFilter(FirebugContext, 'amf')"/>
-			</hbox>
-		</hbox>-->
+	<hbox id="fbToolbarInner" insertbefore="fbDetachButton" class="innerToolbar" flex="1" align="center" >
 		
 		<hbox id="fbFlashbugButtons" insertafter="fbNetButtons" collapsed="true">
 			<toolbarseparator class="fbPanelSpecificButtonsSeparator"/>
@@ -79,15 +69,24 @@
 					class="toolbar-text-button"
 					tooltiptext="flashbug.menu.traceToolTip" 
 					group="flashbugLogFilter" checked="true"
-					oncommand="Firebug.FlashbugModel.onSelectLog(FirebugContext, 'Trace')"/>
+					oncommand="Firebug.ConsoleModule.onSelectLog(Flashbug.getContext(), 'Trace')"/>
 				<toolbarbutton id="flashbugLogFilter-policy" 
 					label="flashbug.menu.policy" 
 					type="radio" 
 					class="toolbar-text-button"
 					tooltiptext="flashbug.menu.policyToolTip" 
 					group="flashbugLogFilter"
-					oncommand="Firebug.FlashbugModel.onSelectLog(FirebugContext, 'Policy')"/>
+					oncommand="Firebug.ConsoleModule.onSelectLog(Flashbug.getContext(), 'Policy')"/>
 			</hbox>
+		</hbox>
+		
+		<hbox id="fbFlashbugFlashButtons" insertafter="fbNetButtons" collapsed="true">
+			<toolbarbutton id="flbInspect" 
+				class="toolbar-text-button" 
+				tooltiptext="flashbug.menu.inspectToolTip" 
+				command="cmd_flbInspect">
+				<image src="chrome://flashbug/skin/inspect.png"/>
+			</toolbarbutton>
 		</hbox>
 		
 		<hbox id="fbFlashbugSOButtons" insertafter="fbNetButtons" collapsed="true">
@@ -105,12 +104,9 @@
 		</hbox>
 		
 		<hbox id="fbFlashbugVersion" insertafter="fbDebuggerButtons" collapsed="true" flex="1" align="right">
-			<description id="flbVersion" 
-				value="flashbug.menu.detecting" 
-				disabled="true"
-				style="padding-top: 4px;"/>
-				
-			<label id="fbFlashbugDownload" value="flashbug.menu.getdebugger" class="text-link" href="http://www.adobe.com/support/flashplayer/downloads.html" />
+			<description id="flbVersion" value="flashbug.menu.detecting" disabled="true" style="padding-top: 4px;"/>
+			<label 	id="fbFlashbugDownload" value="flashbug.menu.getdebugger" 
+					class="text-link" href="http://www.adobe.com/support/flashplayer/downloads.html" />
 		</hbox>
 	</hbox>
 </overlay>

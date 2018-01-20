@@ -111,6 +111,13 @@ function trace2() {
 	
 	dump(str);
 }
+function dump2(msg, obj) {
+	postMessage({
+        type: "debug",
+		title:msg,
+        data: obj
+    });
+}
 
 function store(obj, tag) {
 	obj.dictionary[tag.id] = obj.dictionary[tag.id] || { };
@@ -119,14 +126,28 @@ function store(obj, tag) {
 	}
 }
 
-function readGlyph(ba) {
+function readGlyph(ba, isHiRes) {
+	function loRes(value) {
+		if (isHiRes) return value / 20;
+		return value;
+	}
+	
 	// Convert path into SVG commands
 	var numFillBits = ba.readUB(4),
 		numLineBits = ba.readUB(4),
 		x = 0,
 		y = 0,
 		cmds = [],
-		c = StyleChangeStates;
+		c = StyleChangeStates,
+		b = {left:0, right:0, top:0, bottom:0};
+		
+	function updateBounds(x, y) {
+		if (x < b.left) b.left = x;
+		if (x > b.right) b.right = x;
+		if (y < b.top) b.top = y;
+		if (y > b.bottom) b.bottom = y;
+	}
+		
 	do {
 		var type = ba.readUB(1),
 			flags = null;
@@ -136,34 +157,39 @@ function readGlyph(ba) {
 			if (isStraight) {
 				var isGeneral = ba.readBool();
 				if (isGeneral) {
-					x += ba.readSB(numBits);
-					y += ba.readSB(numBits);
+					x += loRes(ba.readSB(numBits));
+					y += loRes(ba.readSB(numBits));
 					cmds.push('L' + x + ',' + y); // lineto
+					updateBounds(x, y);
 				} else {
 					var isVertical = ba.readBool();
 					if (isVertical) {
-						y += ba.readSB(numBits);
+						y += loRes(ba.readSB(numBits));
 						cmds.push('V' + y); // vertical lineto
+						updateBounds(0, y);
 					} else {
-						x += ba.readSB(numBits);
+						x += loRes(ba.readSB(numBits));
 						cmds.push('H' + x); // horizontal lineto
+						updateBounds(x, 0);
 					}
 				}
 			} else {
-				var cx = x + ba.readSB(numBits),
-					cy = y + ba.readSB(numBits);
-				x = cx + ba.readSB(numBits);
-				y = cy + ba.readSB(numBits);
+				var cx = x + loRes(ba.readSB(numBits)),
+					cy = y + loRes(ba.readSB(numBits));
+				x = cx + loRes(ba.readSB(numBits));
+				y = cy + loRes(ba.readSB(numBits));
 				cmds.push('Q' + cx + ',' + cy + ',' + x + ',' + y); // quadratic Bézier curveto
+				updateBounds(x, y);
 			}
 		} else {
 			var flags = ba.readUB(5);
 			if (flags) {
 				if (flags & c.MOVE_TO) {
 					var numBits = ba.readUB(5);
-					x = ba.readSB(numBits);
-					y = ba.readSB(numBits);
+					x = loRes(ba.readSB(numBits));
+					y = loRes(ba.readSB(numBits));
 					cmds.push('M' + x + ',' + y); // moveto
+					updateBounds(x, y);
 				}
 				if (flags & c.LEFT_FILL_STYLE || flags & c.RIGHT_FILL_STYLE){ ba.readUB(numFillBits); }
 			}
@@ -171,7 +197,19 @@ function readGlyph(ba) {
 	} while(type || flags);
 	ba.align();
 	
-	return {commands: cmds.join(' ')};
+	// For displaying in Flashbug
+	var w = (b.right - b.left),
+		h = (b.bottom - b.top),
+		vB = ('' + [b.left, b.top, b.right - b.left, b.bottom - b.top]);
+	
+	// Convert to SVG //
+	cmds = cmds.join(' ');
+	var svg = '<svg preserveAspectRatio="none" width="' + (w * .05) + '" height="' + (h * .05) + '" viewBox="' + vB + '">'
+	svg += '<g fill-rule="evenodd" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" image-rendering="optimizeQuality"  text-rendering="geometricPrecision" color-rendering="optimizeQuality">';
+	svg += '<path d="' + cmds + '" fill="#000" />';
+	svg += '</g></svg>';
+	
+	return { commands: cmds, svg: svg };
 };
 
 function readEdges(ba, fillStyles, lineStyles, withAlpha, withLineV2, morph, obj) {
@@ -462,6 +500,7 @@ function readFillStyle(ba, withAlpha, morph, obj) {
 			break;
 		case f.LINEAR_GRADIENT:
 		case f.RADIAL_GRADIENT:
+		case f.FOCAL_RADIAL_GRADIENT:
 			var matrix = morph ? [nlizeMatrix(ba.readMatrix()), nlizeMatrix(ba.readMatrix())] : nlizeMatrix(ba.readMatrix());
 			var stops = [],
 				style = {
@@ -481,24 +520,30 @@ function readFillStyle(ba, withAlpha, morph, obj) {
 						color: morph ? [color, ba.readRGBA()] : color
 					});
 				}
+				
+				// Not in specs but found in SWFWire...
+				if (type == f.FOCAL_RADIAL_GRADIENT) style.focalPoint = ba.readFixed8();
 			return style;
 			break;
 		case f.REPEATING_BITMAP:
 		case f.CLIPPED_BITMAP:
-			var imgId = ba.readUI16(),
-				img = obj.dictionary[imgId],
-				matrix = morph ? [ba.readMatrix(), ba.readMatrix()] : ba.readMatrix();
+		case f.NON_SMOOTHED_REPEATING_BITMAP:
+		case f.NON_SMOOTHED_CLIPPED_BITMAP:
+			var bitmapId = ba.readUI16(),
+				img = obj.dictionary[bitmapId],
+				bitmapMatrix = morph ? [ba.readMatrix(), ba.readMatrix()] : ba.readMatrix(),
+				style = {
+				type: 'pattern',
+				image: img,
+				matrix: bitmapMatrix,
+				repeat: (type == f.REPEATING_BITMAP)
+			};
 			if (img) {
-				var style = {
-					type: 'pattern',
-					image: img,
-					matrix: matrix,
-					repeat: (type == f.REPEATING_BITMAP)
-				};
-				return style;
+				//trace2('Found img ' + bitmapId, style);
 			} else {
-				return null;
+				//trace2('Unable to find img ' + bitmapId, style);
 			}
+			return style;
 			break;
 	}
 };
@@ -513,19 +558,19 @@ function readLineStyleArray(ba, withAlpha, withLineV2, morph, obj) {
 			// Read LINESTYLE
 			if (morph) {
 				styles.push({
-					width: [ba.readUI16(), ba.readUI16()],
+					width: [ba.readUI16() / 20, ba.readUI16() / 20],
 					color: [ba.readRGBA(), ba.readRGBA()]
 				});
 			} else {
 				styles.push({
-					width: ba.readUI16(),
+					width: ba.readUI16() / 20,
 					color: withAlpha ? ba.readRGBA() : ba.readRGB()
 				});
 			}
 		} else {
 			// Read LINESTYLE2
 			var style = {};
-			style.width = ba.readUI16(),
+			style.width = morph ? [ba.readUI16() / 20, ba.readUI16() / 20] : ba.readUI16() / 20,
 			style.startCapStyle = ba.readUB(2),
 			style.joinStyle = ba.readUB(2),
 			style.hasFillFlag = ba.readBool(),
@@ -541,7 +586,7 @@ function readLineStyleArray(ba, withAlpha, withLineV2, morph, obj) {
 			if (style.joinStyle == 2) style.miterLimitFactor = ba.readUI16();
 			
 			if (!style.hasFillFlag) {
-				style.color = ba.readRGBA();
+				style.color = morph ? [ba.readRGBA(), ba.readRGBA()] : ba.readRGBA();
 			} else {
 				style.fillType = readFillStyle(ba, withAlpha, morph, obj);
 			}
@@ -574,6 +619,10 @@ function pt2key(x, y) {
 	return (x + 50000) * 100000 + y;
 }
 
+function twip2px(n) {
+	return n /20;
+}
+
 function edges2cmds(edges, stroke) {
 	var firstEdge = edges[0],
 		x1 = 0,
@@ -601,22 +650,22 @@ function edges2cmds(edges, stroke) {
 		for(var i = 0, edge = firstEdge; edge; edge = edges[++i]) {
 			x1 = edge.x1;
 			y1 = edge.y1;
-			if (x1 != x2 || y1 != y2 || !i) cmds.push('M' + x1 + ',' + y1);
+			if (x1 != x2 || y1 != y2 || !i) cmds.push('M' + twip2px(x1) + ',' + twip2px(y1));
 			x2 = edge.x2;
 			y2 = edge.y2;
 			if (null == edge.cx || null == edge.cy) {
 				if (x2 == x1) {
-					cmds.push('V' + y2);
+					cmds.push('V' + twip2px(y2));
 				} else if (y2 == y1) {
-					cmds.push('H' + x2);
+					cmds.push('H' + twip2px(x2));
 				} else {
-					cmds.push('L' + x2 + ',' + y2);
+					cmds.push('L' + twip2px(x2) + ',' + twip2px(y2));
 				}
 			} else {
-				cmds.push('Q' + edge.cx + ',' + edge.cy + ',' + x2 + ',' + y2);
+				cmds.push('Q' + twip2px(edge.cx) + ',' + twip2px(edge.cy) + ',' + twip2px(x2) + ',' + twip2px(y2));
 			}
 		};
-		if (!stroke && (x2 != firstEdge.x1 || y2 != firstEdge.y1)) cmds.push('L' + firstEdge.x1 + ',' + firstEdge.y1);
+		if (!stroke && (x2 != firstEdge.x1 || y2 != firstEdge.y1)) cmds.push('L' + twip2px(firstEdge.x1) + ',' + twip2px(firstEdge.y1));
 	}
 	return cmds.join(' ');
 };
@@ -645,13 +694,13 @@ function getStyle(fill, line, id, morphIdx) {
 		if (line.hasFillFlag) {
 			// Filled line, gradient line
 			fillAttr += ' stroke="url(#' + id + 'gradFill)"';
-			fillAttr += ' stroke-width="' + max(line.width, 20) + '"';
+			fillAttr += ' stroke-width="' + max(line.width, 1) + '"';
 		} else {
 			var color = line.color instanceof Array ? line.color[morphIdx] : line.color,
 				width = line.width instanceof Array ? line.width[morphIdx] : line.width,
 				alpha = color.alpha;
 			fillAttr += ' stroke="' + getColor(color, true) + '"';
-			fillAttr += ' stroke-width="' + max(width, 20) + '"';
+			fillAttr += ' stroke-width="' + max(width, 1) + '"';
 			if (undefined != alpha && alpha < 1) fillAttr += ' stroke-opacity="' + alpha + '"';
 		}
 		
@@ -666,13 +715,6 @@ function getStyle(fill, line, id, morphIdx) {
 			var lineJoin = ['round','bevel','miter'];
 			fillAttr += ' stroke-linejoin="' + lineJoin[line.joinStyle] + '"';
 		}
-		
-		/*if (line.hasFillFlag) {
-			trace2('getStyle fill', fill);
-			trace2('getStyle line', line);
-			trace2('getStyle id', id);
-			trace2('getStyle fillAttr', fillAttr);
-		}*/
 	}
 	
 	return fillAttr;
@@ -729,15 +771,41 @@ function getFill(fill, id, morphIdx) {
 			
 			break;
 		case "pattern":
-			svg += '<pattern';
-			svg += ' id="' + id + 'patternFill"';
-			svg += ' patternUnits="userSpaceOnUse"';
-			svg += ' patternTransform="' + getMatrix(fill.matrix, morphIdx) + '"';
+			svg += '<g id="' + id + 'patternFill">';
+			//svg += '<rect transform="' + getMatrix(fill.matrix, morphIdx) + '"  width="' + fill.image.width + '" height="' + fill.image.height + '" y="0" x="0" fill="#ff0000"/>';
+			
+		
+			svg += '<image';
+			//svg += ' id="' + id + 'patternFill"';
+			svg += ' transform="' + getMatrix(fill.matrix, morphIdx) + '"';
 			svg += ' width="' + fill.image.width + '"';
 			svg += ' height="' + fill.image.height + '"';
-			svg += '>';
-			svg += '<use xlink:href="#i' + fill.image.id + '"/>';
-			svg += '</pattern>';
+			
+			/*var node = t._createElement("image"),
+				width = obj.width,
+				height = obj.height;
+			if (obj.data) {
+				var s = new Gordon.Stream(obj.data),
+					dataSize = width * height * 4,
+					canvas = doc.createElement("canvas");
+				canvas.width = width;
+				canvas.height = height;
+				var ctx = canvas.getContext("2d"),
+					imgData = ctx.createImageData(width, height),
+					data = imgData.data;
+				for(var i = 0; i < dataSize; i += 4){
+					data[i] = s.readUI8();
+					data[i + 1] = s.readUI8();
+					data[i + 2] = s.readUI8();
+					data[i + 3] = 255;
+				}
+				ctx.putImageData(imgData, 0, 0);
+				var uri = canvas.toDataURL();
+			} else { var uri = obj.uri; }*/
+			svg += ' xlink:href="$$$_' + fill.image.id + '_URI$$$"';
+			svg += '/>';
+			
+			svg += '</g>';
 			break;
 	}
 	
@@ -757,40 +825,62 @@ function getColor(color) {
 	return 'rgb(' + [color.red, color.green, + color.blue] + ')';
 };
 
-function convert2SVG(shp, morph, isStart) {
-	if (morph) {
-		var morphObj = shp;
-		shp = isStart ? morphObj.start : morphObj.end;
-		shp.fill = isStart ? shp.edges.fill : morphObj.start.fill;
-		shp.line = isStart ? shp.edges.line : morphObj.start.line;
-		shp.commands = edges2cmds(shp.edges.records, !!shp.line);
-	}
+function union(rect1, rect2) {
+	return {
+			left: rect1.left < rect2.left ? rect1.left : rect2.left,
+			right: rect1.right > rect2.right ? rect1.right : rect2.right,
+			top: rect1.top < rect2.top ? rect1.top : rect2.top,
+			bottom: rect1.bottom > rect2.bottom ? rect1.bottom : rect2.bottom
+		};
+};
+
+// TODO Figure out how to process a shape with multiple edge records, error at line 845, records doesn't exist
+/*
+Normal: start.edges{records, fill, line}
+Multipath: start.edges[{records, fill, _index}, {records, line, _index}]
+*/
+function morph2SVG(shp) {
+	shp.start.fill = shp.start.edges.fill;
+	shp.start.line = shp.start.edges.line;
+	shp.start.commands = edges2cmds(shp.start.edges.records, !!shp.start.line);
+	
+	shp.end.fill = shp.start.edges.fill;
+	shp.end.line = shp.start.edges.line;
+	shp.end.commands = edges2cmds(shp.end.edges.records, !!shp.end.line);
+	// Union bounds
+	shp.bounds = union(shp.start.bounds, shp.end.bounds);
 	
 	// Convert to SVG //
-	var segments = shp.segments,
-		b = shp.bounds,
+	var b = shp.bounds,
+		morphIdx = 0,
+		startSegments = shp.start.segments,
+		endSegments = shp.end.segments,
 		svg = '',
-		morphIdx = morph ? isStart ? 0 : 1 : null;
+		cmds = '',
+		defs = '<defs>';
 	
 	// SVG Header
 	svg += '<g fill-rule="evenodd" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" image-rendering="optimizeQuality"  text-rendering="geometricPrecision" color-rendering="optimizeQuality">';
 	
-	if (!segments) segments = [shp];
-	var cmds = '';
-	var defs = '<defs>';
-	for (var i = 0, seg = segments[0]; seg; seg = segments[++i]) {
-		var id = seg.id,
-			fill = seg.fill,
-			line = seg.line;
-		
+	// SVG Body
+	if (!startSegments) startSegments = [shp.start];
+	if (!endSegments) endSegments = [shp.end];
+	for (var i = 0; i < startSegments.length; i++) {
+		var startSeg = startSegments[i],
+			endSeg = endSegments[i],
+			id = startSeg.id,
+			fill = startSeg.fill,
+			line = startSeg.line;
+			
 		if (fill && 'pattern' == fill.type && !fill.repeat) {
 			defs += getFill(fill, id, morphIdx);
-			// TODO: Figure out how to integrate SVG Image tag without doubling work when drawing HTML Image tag
 			cmds += '<use xlink:href="#' + id + 'patternFill" transform="' + getMatrix(fill.matrix, morphIdx) + '" />';
 		} else {
 			if (fill && 'pattern' != fill.type) defs += getFill(fill, id, morphIdx);
 			if (line && line.hasFillFlag) defs += getFill(line.fillType, id, morphIdx);
-			cmds += '<path id="' + id + '" d="' + seg.commands + '"' + getStyle(fill, line, id, morphIdx) + ' />';
+			cmds += '<path id="' + id + '" d="' + startSeg.commands + '"' + getStyle(fill, line, id, morphIdx) + '>';
+			cmds += '<animate dur="10s" repeatCount="indefinite" attributeName="d" values="' + startSeg.commands + '; ' + endSeg.commands + '; ' + endSeg.commands + '" />';
+			cmds += '</path>';
 		}
 	}
 	
@@ -801,26 +891,55 @@ function convert2SVG(shp, morph, isStart) {
 	svg += '</g></svg>';
 	
 	// For displaying in Flashbug
-	var maxWidth = 100,
-		maxHeight = 80,
-		w = (((b.right - b.left) / 20)),
-		h = (((b.bottom - b.top) / 20)),
-		vB = ('' + [b.left, b.top, b.right - b.left, b.bottom - b.top]),
-		tw = w,
-		th = h,
-		tvB = '';
+	var w = (b.right - b.left),
+		h = (b.bottom - b.top),
+		vB = ('' + [b.left, b.top, b.right - b.left, b.bottom - b.top]);
 	
-	if (w > maxWidth || h > maxHeight) {
-		if (w > h) {
-			tw = maxWidth;
-			th = Math.round((h / w) * maxWidth);
+	shp.svgHeaderThumb = '<svg preserveAspectRatio="none" width="' + w + '" height="' + h + '" viewBox="' + vB + '">';
+	// For export
+	shp.svgHeader = '<svg xmlns="http://www.w3.org/2000/svg" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" preserveAspectRatio="none" width="' + w + '" height="' + h + '" viewBox="' + vB + '">';
+	shp.data = svg;
+};
+
+function shape2SVG(shp) {
+	// Convert to SVG //
+	var segments = shp.segments,
+		b = shp.bounds,
+		svg = '',
+		cmds = '',
+		defs = '<defs>';
+	
+	// SVG Header
+	svg += '<g fill-rule="evenodd" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" image-rendering="optimizeQuality"  text-rendering="geometricPrecision" color-rendering="optimizeQuality">';
+	
+	if (!segments) segments = [shp];
+	for (var i = 0, seg = segments[0]; seg; seg = segments[++i]) {
+		var id = seg.id,
+			fill = seg.fill,
+			line = seg.line;
+		
+		if (fill && 'pattern' == fill.type && !fill.repeat) {
+			defs += getFill(fill, id);
+			cmds += '<use xlink:href="#' + id + 'patternFill" />';
 		} else {
-			tw = Math.round((w / h) * maxHeight);
-			th = maxHeight;
+			if (fill && 'pattern' != fill.type) defs += getFill(fill, id);
+			if (line && line.hasFillFlag) defs += getFill(line.fillType, id);
+			cmds += '<path id="' + id + '" d="' + seg.commands + '"' + getStyle(fill, line, id) + ' />';
 		}
 	}
 	
-	shp.svgHeaderThumb = '<svg preserveAspectRatio="none" width="' + tw + '" height="' + th + '" viewBox="' + vB + '">';
+	// SVG Footer
+	defs += '</defs>';
+	svg += defs;
+	svg += cmds;
+	svg += '</g></svg>';
+	
+	// For displaying in Flashbug
+	var w = (b.right - b.left),
+		h = (b.bottom - b.top),
+		vB = ('' + [b.left, b.top, b.right - b.left, b.bottom - b.top]);
+	
+	shp.svgHeaderThumb = '<svg preserveAspectRatio="none" width="' + w + '" height="' + h + '" viewBox="' + vB + '">';
 	// For export
 	shp.svgHeader = '<svg xmlns="http://www.w3.org/2000/svg" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" preserveAspectRatio="none" width="' + w + '" height="' + h + '" viewBox="' + vB + '">';
 	shp.data = svg;
@@ -873,6 +992,11 @@ function readEnd(obj, tag, ba) {
 	if(hasSoundBlock) streams.pop();
 };
 
+// Type 1
+function readShowFrame(obj, tag, ba) {
+	obj.frameIndex++;
+};
+
 // Type 2
 function readDefineShape(obj, tag, ba, withAlpha, withLineV2) {
 	
@@ -880,16 +1004,25 @@ function readDefineShape(obj, tag, ba, withAlpha, withLineV2) {
 	var id = ba.readUI16(),
 		t = this,
 		shp = {
-			type: "shape",
+			type: "Shape",
 			id: id,
 			data: '',
 			bounds: ba.readRect()
 		};
+		
+	shp.bounds.left /= 20; /* twips */
+	shp.bounds.right /= 20; /* twips */
+	shp.bounds.top /= 20; /* twips */
+	shp.bounds.bottom /= 20; /* twips */
 	
 	ba.align();
 	
 	if (withLineV2) {
 		shp.edgeBounds = ba.readRect();
+		shp.edgeBounds.left /= 20; /* twips */
+		shp.edgeBounds.right /= 20; /* twips */
+		shp.edgeBounds.top /= 20; /* twips */
+		shp.edgeBounds.bottom /= 20; /* twips */
 		ba.readUB(5); // Reserved
 		shp.usesFillWindingRule = ba.readBool();
 		shp.usesNonScalingStrokes = ba.readBool();
@@ -897,6 +1030,7 @@ function readDefineShape(obj, tag, ba, withAlpha, withLineV2) {
 		ba.align();
 	}
 	
+	// SHAPEWITHSTYLE //
 	var fillStyles = readFillStyleArray(ba, withAlpha, undefined, obj),
 		lineStyles = readLineStyleArray(ba, withAlpha, withLineV2, undefined, obj),
 		edges = readEdges(ba, fillStyles, lineStyles, withAlpha, withLineV2, undefined, obj);
@@ -905,7 +1039,7 @@ function readDefineShape(obj, tag, ba, withAlpha, withLineV2) {
 		var segments = shp.segments = [];
 		for (var i = 0, seg = edges[0]; seg; seg = edges[++i]) {
 			segments.push({
-				type: 'shape',
+				type: 'Shape',
 				id: id + '-' + (i + 1),
 				commands: edges2cmds(seg.records, !!seg.line),
 				fill: seg.fill,
@@ -919,7 +1053,7 @@ function readDefineShape(obj, tag, ba, withAlpha, withLineV2) {
 	}
 	//
 	
-	convert2SVG(shp);
+	shape2SVG(shp);
 	
 	if (withAlpha && withLineV2) {
 		shp.tag = 'defineShape4';
@@ -937,6 +1071,22 @@ function readDefineShape(obj, tag, ba, withAlpha, withLineV2) {
 	return shp;
 };
 
+// Type 4
+function readPlaceObject(obj, tag, ba) {
+	obj.stage = obj.stage || [];
+	var o = {
+		id: ba.readUI16(),
+		depth: ba.readUI16(),
+		matrix: ba.readMatrix(),
+		frame: obj.frameIndex
+	};
+	
+	// If there is still data to read, assume it's a cxform
+	if (tag.contentLength - (ba.position - startPos) > 0) o.colorTransform = ba.readCXForm();
+	
+	obj.stage.push(o);
+}
+
 // Type 6
 /*
 This tag defines a bitmap character with JPEG compression. It contains only the JPEG
@@ -951,12 +1101,92 @@ DefineBits must share common encoding tables.
 
 The minimum file format version for this tag is SWF 1.
 */
+function readImageInfo(data) {
+	var img = new Flashbug.ByteArrayString(data);
+	
+	// JPEG
+	img.position = 0;
+	if (img.readUI16() == 0xFFD8) {
+		var w = 0,
+			h = 0,
+			comps = 0,
+			len = img.length;
+		while (img.position < len) {
+			var marker = img.readUI16();
+			if (marker == 0xFFC0) {
+				img.readUI16(); // Length
+				img.readUI8(); // Bit Depth
+				h = img.readUI16();
+				w = img.readUI16();
+				break;
+			} else if (marker != 0xFFD8 && marker != 0xFFD9) {
+				img.position += img.readUI16(); // Length
+			}
+		}
+		
+		return {
+			format : "JPEG",
+			width : w,
+			height : h,
+			bpp : comps * 8,
+		}
+	}
+	
+	// PNG
+	// If ImageData begins with the eight bytes 0x89 0x50 0x4E 0x47 0x0D 0x0A 0x1A 0x0A
+	img.position = 0;
+	if (img.readUI8() == 0x89 && img.readUTFBytes(3) == "PNG") {
+		img.position = 16;
+		var w = img.readUI32(),
+			h = img.readUI32(),
+			bpc = img.readUI8(),
+			ct = img.readUI8(),
+			bpp = bpc;
+			
+		if (ct == 4) bpp *= 2;
+		if (ct == 2) bpp *= 3;
+		if (ct == 6) bpp *= 4;
+
+		var alpha = ct >= 4;
+		return {
+			format : "PNG",
+			width : w,
+			height : h,
+			bpp : bpp,
+			alpha : alpha
+		}
+	}
+	
+	// GIF
+	// If ImageData begins with the six bytes 0x47 0x49 0x46 0x38 0x39 0x61
+	img.position = 0;
+	if (img.readUTFBytes(3) == "GIF") {
+		var version = img.readUTFBytes(3),
+			w = img.readUI16(),
+			h = img.readUI16(),
+			bpp = ((img.readUI8() >> 4) & 7) + 1;
+
+		return {
+			format : "GIF89a",
+			version : version,
+			width : w,
+			height : h,
+			bpp : bpp,
+		}
+	}
+	
+	return {
+			format : '?',
+			width : 0,
+			height : 0,
+		}
+};
 function readDefineBits(obj, tag, ba, withAlpha, withDeblock) {
 	var id = ba.readUI16(), 
 		h = obj.jpegTables,
 		alphaDataOffset,
 		img = {};
-	img.type = 'image';
+	img.type = 'Image';
 	img.id = id;
 	img.imageType = withAlpha ? "PNG" : "JPEG";
 	img.width = 0;
@@ -987,36 +1217,17 @@ function readDefineBits(obj, tag, ba, withAlpha, withDeblock) {
 		if (getByte(0) == 0xFF && getByte(1) == 0xD9 && getByte(2) == 0xFF && getByte(3) == 0xD8) data = data.substr(4);
 	}
 	
-	// Determine Type
-	/*var ba2 = new Flashbug.ByteArrayString(ba.readBytes(alphaDataOffset), Flashbug.ByteArrayString.LITTLE_ENDIAN);
-	img.bitmapData = ba2._buffer;
-	var bitmapData = [ba2.readByte(), ba2.readByte(), ba2.readByte(), ba2.readByte(), ba2.readByte(), ba2.readByte(), ba2.readByte(), ba2.readByte()];
+	img.data = h ? h.substr(0, h.length - 2) + data.substr(2) : data;
 	
-	if (bitmapData[0] == 0xff && (bitmapData[1] == 0xd8 || bitmapData[1] == 0xd9)) {
-		img.bitmapType = 'JPEG';
-	} else if (bitmapData[0] == 0x89 && bitmapData[1] == 0x50 && bitmapData[2] == 0x4e && bitmapData[3] == 0x47 && bitmapData[4] == 0x0d && bitmapData[5] == 0x0a && bitmapData[6] == 0x1a && bitmapData[7] == 0x0a) {
-		img.bitmapType = 'PNG';
-	} else if (bitmapData[0] == 0x47 && bitmapData[1] == 0x49 && bitmapData[2] == 0x46 && bitmapData[3] == 0x38 && bitmapData[4] == 0x39 && bitmapData[5] == 0x61) {
-		img.bitmapType = 'GIF89a';
-	}*/
+	// Fix multiple SOI and EOI in JPEG data in SPL files (Flash 5)
+	img.data = img.data.replace(/[^ÿØ]ÿØ/g, ''); // Make sure only one SOI and it's at the beginning
+	img.data = img.data.replace(/ÿÙ(?=[ÿ])/g, ''); // Make sure only one EOI and it's at the end
 	
 	// Determine dimensions
-	for (var i = 0; data[i]; i++) {
-		var word = ((data.charCodeAt(i) & 0xff) << 8) | (data.charCodeAt(++i) & 0xff);
-		if (0xffd9 == word) {
-			word = ((data.charCodeAt(++i) & 0xff) << 8) | (data.charCodeAt(++i) & 0xff);
-			if(word == 0xffd8){
-				data = data.substr(0, i - 4) + data.substr(i);
-				i -= 4;
-			}
-		} else if (0xffc0 == word) {
-			i += 3;
-			img.height = ((data.charCodeAt(++i) & 0xff) << 8) | (data.charCodeAt(++i) & 0xff);
-			img.width = ((data.charCodeAt(++i) & 0xff) << 8) | (data.charCodeAt(++i) & 0xff);
-			break;
-		}
-	}
-	img.data = h ? h.substr(0, h.length - 2) + data.substr(2) : data;
+	img.meta = readImageInfo(img.data);
+	img.width = img.meta.width;
+	img.height = img.meta.height;
+	img.imageType = img.meta.format;
 	
 	if (withAlpha && withDeblock) {
 		img.tag = 'defineBitsJPEG4';
@@ -1028,7 +1239,7 @@ function readDefineBits(obj, tag, ba, withAlpha, withDeblock) {
 	
 	store(obj, img);
 	
-	if(typeof obj.images == "undefined") obj.images = [];
+	obj.images = obj.images || [];
 	obj.images.push(img);
 	
 	return img;
@@ -1050,33 +1261,30 @@ function readJPEGTables(obj, tag, ba) {
 // Type 9
 function readSetBackgroundColor(obj, tag, ba) {
 	obj.backgroundColor = ba.readRGB();
-	//if(obj.backgroundColor == -1) obj.backgroundColor = 0xFFFFFF;
-	//obj.backgroundColor = "#" + obj.backgroundColor.toString(16).toUpperCase();
 };
 
 // Type 10
 function readDefineFont(obj, tag, ba) {
-	var startPos = ba.position;
-	
 	var font = {};
+	font.type = 'Font';
 	font.id = ba.readUI16();
 	font.numGlyphs = ba.readUI16() / 2;
-	font.glyphs = [];
-	font.type = 'font';
+	font.glyphShapeTable = [];
+	font.offsetTable = [font.numGlyphs * 2];
 	font.info = {};
-	font.info.codes = [];
+	font.info.codeTable = [];
 	font.tag = 'defineFont';
-	font.dataSize = tag.contentLength - (ba.position - startPos);
+	font.dataSize = tag.contentLength;
 	
-	// Skip offset table?
-	ba.seek(font.numGlyphs * 2 - 2);
+	var i = font.numGlyphs - 1;
+	while (i--) { font.offsetTable.push(ba.readUI16()); }
 	
-	var i = font.numGlyphs;
-	while (i--) { font.glyphs.push(readGlyph(ba)); }
+	i = font.numGlyphs;
+	while (i--) { font.glyphShapeTable.push(readGlyph(ba)); }
 	
 	store(obj, font);
 	
-	if (typeof obj.fonts == "undefined") obj.fonts = [];
+	obj.fonts = obj.fonts || [];
 	obj.fonts.push(font);
 };
 
@@ -1085,60 +1293,80 @@ function readDefineText(obj, tag, ba, withAlpha) {
 	var id = ba.readUI16(),
 		strings = [],
 		txt = {
-			type: "text",
+			type: "Text",
 			id: id,
+			tag: 'defineText',
 			bounds: ba.readRect(),
 			matrix: ba.readMatrix(),
-			stringsRaw: strings,
-			strings: [],
-			colors: []
+			strings: strings,
+			colors: [],
+			glyphBits: ba.readUI8(),
+			advanceBits: ba.readUI8()
 		},
-		numGlyphBits = ba.readUI8(),
-		numAdvBits = ba.readUI8(),
-		fontId = null,
-		fill = null,
+		fontID = null,
+		font = null,
+		textColor = null,
 		x = 0,
 		y = 0,
-		size = 0,
+		textHeight = 0,
 		str = null;
+		
+	txt.bounds.left /= 20;
+	txt.bounds.right /= 20;
+	txt.bounds.top /= 20;
+	txt.bounds.bottom /= 20;
+		
+	if (withAlpha) tag = 'defineText2';
 		
 	// Get glpyhs
 	do {
-		var hdr = ba.readUB(8);
+		var hdr = ba.readUI8();
 		if (hdr) {
-			var type = hdr >> 7;
-			if (type) {
-				var flags = hdr & 0x0f;
-				if (flags) {
-					if (flags & TextStyleFlags.HAS_FONT) fontId = ba.readUI16();
-					if (flags & TextStyleFlags.HAS_COLOR) fill = withAlpha ? ba.readRGBA() : ba.readRGB();
-					if (flags & TextStyleFlags.HAS_XOFFSET) x = ba.readSI16();
-					if (flags & TextStyleFlags.HAS_YOFFSET) y = ba.readSI16();
-					if (flags & TextStyleFlags.HAS_FONT) size = ba.readUI16();
-				}
-				str = {
-					font: obj.dictionary[fontId].id,
-					fill: fill,
-					x: x,
-					y: y,
-					size: size,
-					entries: []
-				};
-				strings.push(str);
-			} else {
-				var numGlyphs = hdr & 0x7f,
-					entries = str.entries;
-				while (numGlyphs--) {
-					var idx = ba.readUB(numGlyphBits),
-						adv = ba.readSB(numAdvBits);
-					entries.push({
-						index: idx,
-						advance: adv
-					});
-					x += adv;
-				}
+			ba.position--;
+			
+			// TextRecord
+			ba.readBool(); // TextRecordType, always 1
+			ba.readUB(3); // StyleFlagsReserved, always 0
+			
+			var styleFlagsHasFont = ba.readBool(),
+				styleFlagsHasColor = ba.readBool(),
+				styleFlagsHasYOffset = ba.readBool(),
+				styleFlagsHasXOffset = ba.readBool();
 				ba.align();
+				
+			if (styleFlagsHasFont) {
+				fontID = ba.readUI16();
+				if (fontID && obj.dictionary[fontID]) font =  obj.dictionary[fontID];
 			}
+			if (styleFlagsHasColor) textColor = withAlpha ? ba.readRGBA() : ba.readRGB();
+			if (styleFlagsHasXOffset) x = ba.readSI16();
+			if (styleFlagsHasYOffset) y = ba.readSI16();
+			if (styleFlagsHasFont) textHeight = ba.readUI16();
+			
+			str = {};
+			str.fontID = fontID;
+			str.font = font ? font.info.name : '';
+			str.textColor = textColor;
+			str.x = x;
+			str.y = y;
+			str.textHeight = textHeight / 20 /* twips */;
+			str.glyphCount = ba.readUI8();
+			str.glyphEntries = [];
+			
+			// GlyphEntry
+			var i = str.glyphCount;
+			while (i--) {
+				var idx = ba.readUB(txt.glyphBits),
+					adv = ba.readUB(txt.advanceBits);
+				str.glyphEntries.push({
+					index: idx,
+					advance: adv
+				});
+				x += adv;
+			}
+			ba.align();
+			
+			strings.push(str);
 		}
 	} while(hdr);
 	
@@ -1158,16 +1386,16 @@ function readDefineText(obj, tag, ba, withAlpha) {
 	}
 	
 	for(var i = 0, string = strings[0]; string; string = strings[++i]) {
-		var entries = string.entries,
-			font = obj.dictionary[string.font],
-			codes = font.info.codes,
+		var entries = string.glyphEntries,
+			font = obj.dictionary[string.fontID],
+			codes = font.info.codeTable,
 			chars = [];
 		for(var j = 0, entry = entries[0]; entry; entry = entries[++j]){
 			var str = fromCharCode(codes[entry.index]);
 			if(' ' != str || chars.length) chars.push(str);
 		}
-		colors[getHex(string.fill)] = string.fill;
-		txt.strings.push(chars.join(''));
+		colors[getHex(string.textColor)] = string.textColor;
+		string.text = chars.join('');
 	}
 	
 	// Get just unique colors
@@ -1177,14 +1405,477 @@ function readDefineText(obj, tag, ba, withAlpha) {
 	
 	store(obj, txt);
 	
-	if (typeof obj.text == "undefined") obj.text = [];
+	obj.text = obj.text || [];
 	obj.text.push(txt);
 };
 
+// Type 12
+/*
+DoAction instructs Flash Player to perform a list of actions when the current frame is
+complete. The actions are performed when the ShowFrame tag is encountered, regardless of
+where in the frame the DoAction tag appears.
+*/
+function readDoAction(obj, tag, ba) {
+	var actionsRaw = [], code;
+	while ((code = ba.readUI8())) { // Action Code or ActionEndFlag
+		var o = readActionRecord(code, ba);
+		actionsRaw.push(o);
+	}
+	//trace2('actionsraw', actionsRaw);
+	var as = actionsRaw.length ? convertActions(actionsRaw) : [];
+	var frameAS = {type:'ActionScript', frame:obj.frameIndex, actions:actionsRaw, actionscript:as};
+	if (obj.frames[obj.frameIndex]) {
+		if (obj.frames[obj.frameIndex].length) {
+			// Multiple
+			if (!obj.frames[obj.frameIndex][obj.frames[obj.frameIndex].length - 1].actions) {
+				// Frame Label
+				frameAS.label = obj.frames[obj.frameIndex][obj.frames[obj.frameIndex].length - 1].label;
+				obj.frames[obj.frameIndex][obj.frames[obj.frameIndex].length - 1] = frameAS;
+			} else {
+				// FrameAS
+				obj.frames[obj.frameIndex].push(frameAS);
+			}
+		} else {
+			// Single
+			if (!obj.frames[obj.frameIndex].actions) {
+				// Frame Label
+				frameAS.label = obj.frames[obj.frameIndex].label;
+				obj.frames[obj.frameIndex] = frameAS;
+			} else {
+				// FrameAS
+				obj.frames[obj.frameIndex] = [obj.frames[obj.frameIndex], frameAS];
+			}
+		}
+	} else {
+		// Empty
+		obj.frames[obj.frameIndex] = frameAS;
+	}
+};
+
+function strip(str) {
+	if (!str) return str;
+	return str.toString().indexOf('"') != -1 ? str.toString().split('"')[1] : str;
+}
+
+const PROPERTIES = [
+	'_x',
+	'_y',
+	'_xscale',    
+	'_yscale',
+	'_currentframe',
+	'_totalframes',
+	'_alpha',
+	'_visible',
+	'_width',
+	'_height',
+	'_rotation',
+	'_target',
+	'_framesloaded',
+	'_name',
+	'_droptarget',
+	'_url',
+	'_highquality',
+	'_focusrect',
+	'_soundbuftime',
+	'_quality',
+	'_xmouse',
+	'_ymouse'
+];
+
+function convertActions(actionsRaw) {
+	var pool, stack = [], branches = [], register = [];
+	for (var i = 0, l = actionsRaw.length; i < l; i++) {
+		var o = actionsRaw[i], act = o.action;
+		
+		//trace2('act ' + act, o);
+		// Flash 1,2,3 //	
+		if (act == 'ActionPlay') {
+			var last = stack.length - 1;
+			if (stack.length && stack[last].indexOf('gotoFrame') != -1) {
+				stack.push(stack.pop().replace('gotoFrame', 'gotoAndPlay'));
+			} if (stack.length && stack[last].indexOf('gotoLabel') != -1) {
+				stack.push(stack.pop().replace('gotoLabel', 'gotoAndPlay'));
+			} else {
+				stack.push('play();');
+			}
+		} else if (act == 'ActionStop') {
+			var last = stack.length - 1;
+			if (stack.length && stack[last].indexOf('gotoFrame') != -1) {
+				stack.push(stack.pop().replace('gotoFrame', 'gotoAndStop'));
+			} if (stack.length && stack[last].indexOf('gotoLabel') != -1) {
+				stack.push(stack.pop().replace('gotoLabel', 'gotoAndStop'));
+			} else {
+				stack.push('stop();');
+			}
+		} else if (act == 'ActionNextFrame') {
+			stack.push('nextFrame();');
+		} else if (act == 'ActionPreviousFrame') {
+			stack.push('previousFrame();');
+		} else if (act == 'ActionGotoFrame') {
+			stack.push('gotoFrame(' + o.frame + ');');
+		} else if (act == 'ActionGoToLabel') {
+			stack.push('gotoLabel(' + o.label + ');');
+		} else if (act == 'ActionWaitForFrame') {
+			// ??
+		} else if (act == 'ActionGetURL') {
+			var target = o.targetString, url = o.urlString;
+			if (url.indexOf('FSCommand') == 0) {
+				url = url.replace('FSCommand:', '');
+				stack.push('fscommand("' + url + '", "' + target + '");');
+			} else {
+				stack.push('getURL("' + url + '", "' + target + '");');
+			}
+		} else if (act == 'ActionStopSounds') {
+			stack.push('stopAllSounds();');
+		} else if (act == 'ActionToggleQuality') {
+			stack.push('togglQuality();');
+		} else if (act == 'ActionSetTarget') {
+			if (o.targetName != '') {
+				stack.push("tellTarget('" + o.targetName + "') {");
+			} else {
+				stack.push("}");
+			}
+			
+		// Flash 4 //
+		} else if (act == 'ActionAdd' || act == 'ActionAdd2') {
+			var a = stack.pop(), b = stack.pop();
+			stack.push(b + ' + ' + a);
+		} else if (act == 'ActionSubtract') {
+			var a = stack.pop(),
+				b = stack.pop();
+			stack.push(b + ' - ' + a);
+		} else if (act == 'ActionMultiply') {
+			var a = stack.pop(), b = stack.pop();
+			stack.push(b + ' * ' + a);
+		} else if (act == 'ActionDivide') {
+			var a = stack.pop(), b = stack.pop();
+			stack.push(b + ' / ' + a);
+		} else if (act == 'ActionEquals' || act == 'ActionEquals2') {
+			var a = stack.pop(), b = stack.pop();
+			stack.push(b + ' == ' + a);
+		} else if (act == 'ActionLess') {
+			var a = stack.pop(), b = stack.pop();
+			stack.push(b + ' < ' + a);
+		} else if (act == 'ActionAnd') {
+			var a = stack.pop(), b = stack.pop();
+			stack.push(b + ' && ' + a);
+		} else if (act == 'ActionNot') {
+			//
+		} else if (act == 'ActionOr') {
+			var a = stack.pop(), b = stack.pop();
+			stack.push(b + ' || ' + a);
+		} else if (act == 'ActionStringAdd') {
+			var a = stack.pop(), b = stack.pop();
+			stack.push(b + ' add ' + a);
+		} else if (act == 'ActionStringEquals') {
+			var a = stack.pop(), b = stack.pop();
+			stack.push(b + ' eq ' + a);
+		} else if (act == 'ActionStringExtract') {
+			var count = stack.pop(),
+				index = stack.pop(),
+				str = stack.pop(); // leave '
+			stack.push('substring(' + str + ', ' + index + ', ' + count + ')');
+		} else if (act == 'ActionStringLength') {
+			var str = stack.pop(); // leave '
+			stack.push('length(' + str + ')');
+		} else if (act == 'ActionMBStringExtract') {
+			//
+		} else if (act == 'ActionMBStringLength') {
+			//
+		} else if (act == 'ActionStringLess') {
+			//
+		} else if(act == 'ActionPop') {
+			//stack.pop(); // Ruins the stack
+		} else if (act == 'ActionPush') {
+			//trace2('ActionPush', o);
+			for (var j = 0, l2 = o.stack.length; j < l2; j++) {
+				if (o.stack[j].type == 'constant') {
+					//trace2('ActionPush (const): ' + pool[o.stack[j].value]);
+					stack.push('"' + pool[o.stack[j].value] + '"');
+				} else if (o.stack[j].type == 'register') {
+					//trace2('ActionPush (reg)a: ' + o.stack[j].value, register);
+					//trace2('ActionPush (reg)b: ' + register);
+					stack.push(o.stack[j].value);
+					//trace2('ActionPush (reg)c: ' + stack, stack);
+				} else {
+					var val = o.stack[j].type == 'string' ? '"' + o.stack[j].value + '"' : o.stack[j].value;
+					//trace2('ActionPush : ' + val);
+					stack.push(val);
+				}
+			}
+		} else if (act == 'ActionAsciiToChar') {
+			//
+		} else if (act == 'ActionCharToAscii') {
+			//
+		} else if (act == 'ActionToInteger') {
+			var a = stack.pop();
+			stack.push('int(' + a + ')');
+		} else if (act == 'ActionMBAsciiToChar') {
+			//
+		} else if (act == 'ActionMBCharToAscii') {
+			//
+		} else if (act == 'ActionCall') {
+			var frame = stack.pop();
+			stack.push('call(' + frame + ');');
+		} else if (act == 'ActionIf') {
+			var condition = stack.pop();
+			stack.push('if (' + condition + ') {');
+			branches.push(o.pos + o.branchOffset);
+		} else if (act == 'ActionJump') {
+			branches.pop();
+			stack.push('} else {');
+			branches.push(o.pos + o.branchOffset);
+		} else if (act == 'ActionGetVariable') {
+			stack[stack.length - 1] = strip(stack[stack.length - 1]);
+			//trace2('ActionGetVariable : ' + stack[stack.length - 1]);
+		} else if (act == 'ActionSetVariable') {
+			var value = stack.pop(),
+				target = stack.pop();
+			if (target.indexOf(' add ') != -1) {
+				stack.push('set(' + target + ', ' + value + ');');
+			} else {
+				stack.push(strip(target) + ' = ' + value + ';');
+			}
+		} else if (act == 'ActionGetURL2') {
+			var target = strip(stack.pop()).replace('_level', ''), // This is automatically added at compilation
+				url = stack.pop();
+			stack.push('loadMovieNum(' + url + ', ' + target + ')');
+		} else if (act == 'ActionGetProperty') {
+			var index = stack.pop(),
+				target = stack.pop();
+			stack.push('getProperty(' + target + ', ' + PROPERTIES[index] + ');');
+		} else if (act == 'ActionGotoFrame2') {
+			var frame = stack.pop();
+			if (o.sceneBiasFlag) frame += o.sceneBias;
+			if (o.playFlag) {
+				stack.push('gotoAndPlay(' + frame + ');');
+			} else {
+				stack.push('gotoAndStop(' + frame + ');');
+			}
+		} else if (act == 'ActionRemoveSprite') {
+			var a = stack.pop();
+			stack.push('removeMovieClip(' + a + ');');
+		} else if (act == 'ActionSetProperty') {
+			var value = stack.pop(),
+				index = stack.pop(),
+				target = stack.pop();
+			stack.push('setProperty(' + target + ', ' + PROPERTIES[index] + ', ' + value + ');');
+		} else if (act == 'ActionSetTarget2') {
+			var targetName = stack.pop();
+			if (targetName != '') {
+				stack.push("tellTarget('" + targetName + "') {");
+			} else {
+				stack.push("}");
+			}
+			target = o.targetName;
+		} else if (act == 'ActionStartDrag') {
+			// target, lockcenter
+			var args = [stack.pop(), stack.pop()],
+				constrain = stack.pop();
+			if (constrain != 0) {
+				// y2, x2, y1, x1
+				args.push(stack.pop(), stack.pop(), stack.pop(), stack.pop());
+			}
+			stack.push('startDrag(' + args.join(', ') + ');');
+		
+		} else if (act == 'ActionWaitForFrame2') {
+			//
+		} else if (act == 'ActionCloneSprite') {
+			var depth = stack.pop().replace('16384 + ', ''), // This is automatically added at compilation to push it to the top,
+				target = stack.pop(),
+				source = stack.pop();
+			stack.push('duplicateMovieClip(' + source + ', ' + target + ', ' + depth + ');');
+		} else if (act == 'ActionEndDrag') {
+			stack.push('stopDrag();');
+		} else if (act == 'ActionGetTime') {
+			stack.push('getTimer()');
+		} else if (act == 'ActionRandomNumber') {
+			var max = stack.pop();
+			stack.push('random(' + max + ')');
+		} else if (act == 'ActionTrace') {
+			var a = stack.pop()
+			stack.push('trace(' + a + ')');
+		
+		// Flash 5 //
+		} else if (act == 'ActionCallFunction') {
+			var functionName = strip(stack.pop()),
+				numArgs = stack.pop(),
+				args = [];
+			while (numArgs--) {
+				args.push(stack.pop());
+			}
+			args = args.join(', ');
+			
+			stack.push(functionName + '(' + args + ')');
+		} else if (act == 'ActionCallMethod') {
+			var method = strip(stack.pop()),
+				target = stack.pop(),
+				numArgs = stack.pop(),
+				args = [];
+			while (numArgs--) {
+				args.push(stack.pop());
+			}
+			args = args.join(', ');
+			
+			if (method == '') {
+				stack.push(target + '(' + args + ')');
+			} else {
+				stack.push(target + '.' + method + '(' + args + ')');
+			}
+		} else if (act == 'ActionConstantPool') {
+			//trace2('***ActionConstantPool***', o.constantPool);
+			pool = o.constantPool;
+		} else if (act == 'ActionDefineFunction') {
+			//var object = stack.pop(), 
+			var args = [];
+			//trace2('ActionDefineFunction : ' + o.numParams, o);
+			while (o.numParams--) {
+				args.push(o.parameters.pop());
+			}
+			args.reverse();
+			args = args.join(', ');
+			
+			if (o.functionName) {
+				stack.push('function ' + o.functionName + '(' + args + ') {');
+				//stack.push('with (' + object + ') {');
+			} else {
+				stack.push('function(' + args + ') {');
+			}
+			branches.push(o.pos + o.codeSize);
+		} else if (act == 'ActionDefineLocal') {
+			// defines a local variable and sets its value
+		} else if (act == 'ActionDefineLocal2') {
+			// defines a local variable and sets its value
+		} else if (act == 'ActionDelete') {
+			stack.pop(); // name of prop
+			stack.pop(); // object to delete
+		} else if (act == 'ActionDelete2') {
+			stack.pop(); // name of prop
+		} else if (act == 'ActionEnumerate') {
+			// Used for .. in
+		} else if (act == 'ActionGetMember') {
+			var prop = strip(stack.pop());
+			var target = stack.pop();
+			stack.push(target + '.' + prop);
+			//trace2('ActionGetMember : ' + target + '.' + prop);
+		} else if (act == 'ActionInitArray') {
+			var numArgs = stack.pop(),
+				args = [];
+			while (numArgs--) {
+				args.push(stack.pop());
+			}
+			args = args.join(', ');
+			stack.push('[' + args + ']');
+		} else if (act == 'ActionInitObject') {
+			var numArgs = stack.pop(),
+				args = [];
+			while (numArgs--) {
+				var val = stack.pop(), name = stack.pop();
+				args.push(name + ':' + val);
+			}
+			args = args.join(', ');
+			stack.push('{' + args + '}');
+		} else if (act == 'ActionNewMethod') {
+			var method = strip(stack.pop()),
+				target = stack.pop(),
+				numArgs = stack.pop(),
+				args = [];
+			while (numArgs--) {
+				args.push(stack.pop());
+			}
+			args = args.join(', ');
+			
+			if (method == '') {
+				stack.push('new ' + target + '(' + args + ')');
+			} else {
+				stack.push('new ' + target + '.' + method + '(' + args + ')');
+			}
+		} else if (act == 'ActionNewObject') {
+			var name = strip(stack.pop()),
+				numArgs = stack.pop(),
+				args = [];
+			while (numArgs--) {
+				args.push(stack.pop());
+			}
+			args = args.join(', ');
+			stack.push('new ' + name + '(' + args + ')');
+		} else if (act == 'ActionSetMember') {
+			var value = stack.pop(),
+				prop = strip(stack.pop()),
+				target = stack.pop();
+			stack.push(target + '.' + prop + ' = ' + value + ';');
+		} else if (act == 'ActionTargetPath') {
+			// pop object, push target path?
+		} else if (act == 'ActionWith') {
+			var object = stack.pop();
+			stack.push('with (' + object + ') {');
+			branches.push(o.pos + o.size);
+		} else if (act == 'ActionToNumber') {
+			var a = stack.pop();
+			stack.push('Number(' + a + ')');
+		} else if (act == 'ActionToString') {
+			var a = stack.pop();
+			stack.push('String(' + a + ')');
+		} else if (act == 'ActionTypeOf') {
+			var a = stack.pop();
+			stack.push('typeof ' + a);
+		} else if (act == 'ActionLess2') {
+			var a = stack.pop(), b = stack.pop();
+			stack.push(b + ' <= ' + a);
+		} else if (act == 'ActionModulo') {
+			var a = stack.pop(), b = stack.pop();
+			stack.push(b + ' % ' + a);
+		} else if (act == 'ActionBitAnd') {
+			var a = stack.pop(), b = stack.pop();
+			stack.push(b + ' & ' + a);
+		} else if (act == 'ActionBitLShift') {
+			var a = stack.pop(), b = stack.pop();
+			stack.push(b + ' << ' + a);
+		} else if (act == 'ActionBitOr') {
+			var a = stack.pop(), b = stack.pop();
+			stack.push(b + ' | ' + a);
+		} else if (act == 'ActionBitRShift') {
+			var a = stack.pop(), b = stack.pop();
+			stack.push(b + ' >> ' + a);
+		} else if (act == 'ActionBitURShift') {
+			var a = stack.pop(), b = stack.pop();
+			stack.push(b + ' >>> ' + a);
+		} else if (act == 'ActionBitXor') {
+			var a = stack.pop(), b = stack.pop();
+			stack.push(b + ' ^ ' + a);
+		} else if (act == 'ActionDecrement') {
+			var a = stack.pop();
+			stack.push(a + '--');
+		} else if (act == 'ActionIncrement') {
+			var a = stack.pop();
+			stack.push(a + '++');
+		} else if (act == 'ActionPushDuplicate') {
+			var a = stack[stack.length - 1];
+			stack.push(a);
+		} else if (act == 'ActionReturn') {
+			stack.pop();
+		} else if (act == 'ActionStackSwap') {
+			var a = stack.pop(), b = stack.pop();
+			stack.push(a,b);
+		} else if (act == 'ActionStoreRegister') {
+			//trace2('ActionStoreRegister : ' + o.registerNumber, stack[stack.length - 1]);
+			register[o.registerNumber] = stack[stack.length - 1];
+		}
+		
+		// End If
+		if (branches.length && o.pos > branches[branches.length - 1]) { 
+			while (o.pos > branches[branches.length - 1]) {
+				stack.push('}');
+				branches.pop();
+			}
+		}
+	}
+	
+	return stack;//.join('\n\r');
+}
+
 // Type 13
 function readDefineFontInfo(obj, tag, ba, hasLang) {
-	var startPos = ba.position;
-	
 	var id = ba.readUI16(),
 		font = obj.dictionary[id];
 	font.info.name = ba.readString(ba.readUI8());
@@ -1198,7 +1889,7 @@ function readDefineFontInfo(obj, tag, ba, hasLang) {
 	if (hasLang) font.info.languageCode = ba.readLANGCODE(); // SWF 5 or earlier: always 0 SWF 6 or later: language code
 	
 	var i = font.numGlyphs;
-	while(i--) { font.info.codes.push(font.info.isWideCodes ? ba.readUI16() : ba.readUI8()); }
+	while(i--) { font.info.codeTable.push(font.info.isWideCodes ? ba.readUI16() : ba.readUI8()); }
 };
 
 // Type 14
@@ -1211,8 +1902,9 @@ The minimum file format version is SWF 1.
 */
 function readDefineSound(obj, tag, ba) {
 	var snd = {};
-	snd.type = 'sound';
+	snd.type = 'Sound';
 	snd.id = ba.readUI16();
+	snd.tag = 'defineSound';
 	snd.soundFormat = ba.readUB(4);
 	snd.soundRate = ba.readUB(2);
 	
@@ -1262,7 +1954,9 @@ The minimum file format version is SWF 1.
 function readSoundStreamHead(obj, tag, ba) {
 	var snd = {};
 	ba.readUB(4); // Reserved
-	snd.type = 'sound';
+	snd.type = 'StreamSound';
+	snd.tag = 'soundStreamHead';
+	snd.id = '-';
 	snd.streamID = soundStreamID++;
 	snd.playbackSoundRate = ba.readUB(2); // 0 = 5.5 kHz, 1 = 11 kHz, 2 = 22 kHz, 3 = 44 kHz
 	snd.playbackSoundSize = ba.readUB(1); // Always 1 (16 bit).
@@ -1280,6 +1974,8 @@ function readSoundStreamHead(obj, tag, ba) {
 	if(typeof obj.sounds == "undefined") obj.sounds = [];
 	obj.sounds.push(snd);
 	streams.push(obj.sounds.length - 1);
+	
+	return snd;
 }
 
 // Type 19
@@ -1358,7 +2054,7 @@ The minimum file format version for this tag is SWF 2.
 function readDefineBitsLossless(obj, tag, ba, withAlpha) {
 	//var pos = ba.position;
 	var img = {};
-	img.type = 'image';
+	img.type = 'Image';
 	img.id = ba.readUI16();
 	img.format = ba.readUI8();
 	img.width = ba.readUI16();
@@ -1429,8 +2125,97 @@ The minimum file format version is SWF 2.
 */
 function readProtect(obj, tag, ba) {
 	obj.isProtected = true;
-	if (tag.contentLength > 0) obj.password = ba.readString(tag.contentLength, true);
+	if (tag.contentLength > 0) obj.password = ba.readBytes(tag.contentLength);
 };
+
+// Type 26
+function readPlaceObject2(obj, tag, ba) {
+	obj.stage = obj.stage || [];
+	var o = {
+		frame: obj.frameIndex,
+		hasClipActions: ba.readBoolean(),
+		hasClipDepth: ba.readBoolean(),
+		hasName: ba.readBoolean(),
+		hasRatio: ba.readBoolean(),
+		hasColorTransform: ba.readBoolean(),
+		hasMatrix: ba.readBoolean(),
+		hasCharacter: ba.readBoolean(),
+		move: ba.readBoolean(),
+		depth: ba.readUI16()
+	};
+	if (o.hasCharacter) o.id = ba.readUI16();
+	if (o.hasMatrix) o.matrix = ba.readMatrix();
+	if (o.hasColorTransform) o.colorTransform = ba.readCXFormWithAlpha();
+	if (o.hasRatio) o.ratio = ba.readUI16();
+	if (o.hasName) o.name = ba.readString();
+	if (o.hasClipDepth) o.clipDepth = ba.readUI16();
+	if (o.hasClipActions) o.clipActions = readClipActions(obj, tag, ba);
+	
+	obj.stage.push(o);
+}
+
+function readClipActions(obj, tag, ba) {
+	ba.readUI16(); // Reserved, must be 0
+	var o = {
+		allEventFlags: readClipEventFlags(obj, tag, ba),
+		clipActionRecords: []
+	}
+	
+	// ClipActionEndFlag, must be 0
+	while(obj.version <= 5 ? (ba.readUI16() != 0) : (ba.readUI32() != 0)) {
+		ba.position -= (obj.version <= 5) ? 2 : 4;
+		o.clipActionRecords.push(readClipActionRecord(obj, tag, ba));
+	}
+	
+	return o;
+}
+
+function readClipActionRecord(obj, tag, ba) {
+	var o = {
+		eventFlags: readClipEventFlags(obj, tag, ba),
+		actionRecordSize: ba.readUI32(),
+		actions: []
+	},
+		endPos = ba.position + o.actionRecordSize;
+	if (o.eventFlags.clipEventKeyPress) o.keyCode = ba.readUI8();
+	
+	while (ba.position < endPos) {
+		var code = ba.readUI8();
+		o.actions.push(readActionRecord(code, ba));
+	}
+	return o;
+};	
+
+function readClipEventFlags(obj, tag, ba) {
+	var o = {
+		clipEventKeyUp: ba.readBoolean(),
+		clipEventKeyDown: ba.readBoolean(),
+		clipEventMouseUp: ba.readBoolean(),
+		clipEventMouseDown: ba.readBoolean(),
+		clipEventMouseMove: ba.readBoolean(),
+		clipEventUnload: ba.readBoolean(),
+		clipEventEnterFrame: ba.readBoolean(),
+		clipEventLoad: ba.readBoolean(),
+		clipEventDragOver: ba.readBoolean(),
+		clipEventRollOut: ba.readBoolean(),
+		clipEventRollOver: ba.readBoolean(),
+		clipEventReleaseOutside: ba.readBoolean(),
+		clipEventRelease: ba.readBoolean(),
+		clipEventPress: ba.readBoolean(),
+		clipEventInitialize: ba.readBoolean(),
+		clipEventData: ba.readBoolean()
+	};
+	
+	if (obj.version >= 6) {
+		ba.readUB(5); // Reserved, always 0
+		o.clipEventConstruct =  ba.readBoolean();
+		o.clipEventKeyPress =  ba.readBoolean();
+		o.clipEventDragOut =  ba.readBoolean();
+		ba.readUB(8); // Reserved, always 0
+	};
+	
+	return o;
+}
 
 // Type 32
 function readDefineShape3(obj, tag, ba) {
@@ -1493,9 +2278,9 @@ function readDefineBitsLossless2(obj, tag, ba) {
 function readDefineEditText(obj, tag, ba) {
 	var id = ba.readUI16(),
 		txt = {
-			type: "text",
-			tag: 'defineEditText',
+			type: 'Text',
 			id: id,
+			tag: 'defineEditText',
 			bounds: ba.readRect(),
 			hasText: ba.readBool(),
 			isWordWrap: ba.readBool(),
@@ -1515,6 +2300,11 @@ function readDefineEditText(obj, tag, ba) {
 			useOutlines: ba.readBool()
 		};
 		
+	txt.bounds.left /= 20;
+	txt.bounds.right /= 20;
+	txt.bounds.top /= 20;
+	txt.bounds.bottom /= 20;
+		
 	if (txt.hasFont) txt.fontID = ba.readUI16();
 	if (txt.hasFontClass) txt.fontClass = ba.readString();
 	if (txt.hasFont) txt.fontHeight = ba.readUI16();
@@ -1522,10 +2312,10 @@ function readDefineEditText(obj, tag, ba) {
 	if (txt.hasMaxLength) txt.maxLength = ba.readUI16();
 	if (txt.hasLayout) {
 		txt.align = ba.readUI8();
-		txt.leftMargin = ba.readUI16();
-		txt.rightMargin = ba.readUI16();
-		txt.indent = ba.readUI16();
-		txt.leading = ba.readSI16();
+		txt.leftMargin = ba.readUI16() / 20 /* twips */;
+		txt.rightMargin = ba.readUI16() / 20 /* twips */;
+		txt.indent = ba.readUI16() / 20 /* twips */;
+		txt.leading = ba.readSI16() / 20 /* twips */;
 	}
 	txt.variableName = ba.readString();
 	if (txt.hasText) txt.initialText = ba.readString();
@@ -1539,11 +2329,19 @@ function readDefineEditText(obj, tag, ba) {
 // Type 39
 function readDefineSprite(obj, tag, ba) {
 	var spr = {};
+	spr.type = 'Sprite';
 	spr.id = ba.readUI16();
+	spr.dictionary = [];// obj.dictionary;
+	spr.videos = obj.videos;
+	spr.frames = [];
+	spr.version = obj.version;
+	spr.frameIndex = 1;
 	spr.frameCount = ba.readUI16();
 	
 	// Control tags
-	readTags(obj, ba);
+	readTags(spr, ba);
+	
+	store(obj, spr);
 }
 
 // Type 40 - Undocumented
@@ -1553,37 +2351,48 @@ function readNameCharacter(obj, tag, ba) {
 };
 
 // Type 41 - Undocumented
-/*
-http://www.igorcosta.org/?p=220
-SWF_ProductInfo structure exists in FLEX swfs only, not FLASH 
-compilationDate.time = ProductInfo.readUnsignedInt() + ProductInfo.readUnsignedInt() * (uint.MAX_VALUE + 1);  
-  
-struct SWF_ProductInfo { 
-	UI32 Id;         // "3" 
-	UI32 Edition;    // "6" 
-					 // "flex_sdk_4.0.0.3342" 
-	UI8 Major;       // "4." 
-	UI8 Minor;       // "0." 
-	UI32 BuildL;     // "0." 
-	UI32 BuildH;     // "3342" 
-	UI32 TimestampL; 
-	UI32 TimestampH; 
-}; 
-
-*/
+const PRODUCTS = [
+	"unknown", // 0
+	"Macromedia Flex for J2EE",
+	"Macromedia Flex for .NET",    
+	"Adobe Flex",
+];
+const EDITIONS = [
+	"Developer Edition", // 0       
+	"Full Commercial Edition", // 1 
+	"Non-Commercial Edition", // 2
+	"Educational Edition", // 3
+	"NFR Edition", // 4
+	"Trial Edition", // 5
+	""      // 6 no edition
+];
 function readProductInfo(obj, tag, ba) {
 	obj.productInfo = {};
-	obj.productInfo.ID = ba.readUI32();
-	obj.productInfo.edition = ba.readUI32();
-	obj.productInfo.major = ba.readUI8();
-	obj.productInfo.minor = ba.readUI8();
-	obj.productInfo.buildL = ba.readUI32();
-	obj.productInfo.buildH = ba.readUI32();
-	obj.productInfo.timeStampL = ba.readUI32();
-	obj.productInfo.timeStampH = ba.readUI32();
-	obj.productInfo.sdk = obj.productInfo.major + '.' + obj.productInfo.minor + '.' + obj.productInfo.buildL + '.' + obj.productInfo.buildH;
-	if(obj.productInfo.timeStampL != 0 && obj.productInfo.timeStampH != 0) {
-		obj.productInfo.compileTimeStamp = new Date(obj.productInfo.timeStampL + obj.productInfo.timeStampH * 4294967296).toLocaleString(); // uint.MAX_VALUE + 1
+	obj.productInfo.product = PRODUCTS[ba.readUI32()];
+	obj.productInfo.edition = EDITIONS[ba.readUI32()];
+	obj.productInfo.majorVersion = ba.readUI8();
+	obj.productInfo.minorVersion = ba.readUI8();
+	obj.productInfo.build = ba.readUI64();
+	obj.productInfo.compileDate = new Date(ba.readUI64()).toLocaleString();
+	obj.productInfo.sdk = obj.productInfo.majorVersion + '.' + obj.productInfo.minorVersion + '.' + obj.productInfo.build;
+}
+
+// Type 43
+function readFrameLabel(obj, tag, ba) {
+	obj.frames = obj.frames || [];
+	
+	var lbl = ba.readString();
+	if (obj.frames[obj.frameIndex]) {
+		if (obj.frames[obj.frameIndex].length) {
+			// Multiple
+			obj.frames[obj.frameIndex][obj.frames[obj.frameIndex].length - 1].label = lbl;
+		} else {
+			// Single
+			obj.frames[obj.frameIndex].label = lbl;
+		}
+	} else {
+		// Empty
+		obj.frames[obj.frameIndex] = { type:'ActionScript', frame:obj.frameIndex, label:lbl, actionscript:''};
 	}
 }
 
@@ -1593,7 +2402,8 @@ The SoundStreamHead2 tag is identical to the SoundStreamHead tag, except it allo
 different values for StreamSoundCompression and StreamSoundSize (SWF 3 file format).
 */
 function readSoundStreamHead2(obj, tag, ba) {
-	readSoundStreamHead(obj, tag, ba);
+	var snd = readSoundStreamHead(obj, tag, ba);
+	snd.tag = 'soundStreamHead2';
 }
 
 // Type 46
@@ -1607,6 +2417,16 @@ function readDefineMorphShape(obj, tag, ba, withLineV2) {
 		var startEdgeBounds = ba.readRect(),
 			endEdgeBounds = ba.readRect();
 			
+		startEdgeBounds.left /= 20; /* twips */
+		startEdgeBounds.right /= 20; /* twips */
+		startEdgeBounds.top /= 20; /* twips */
+		startEdgeBounds.bottom /= 20; /* twips */
+		
+		endEdgeBounds.left /= 20; /* twips */
+		endEdgeBounds.right /= 20; /* twips */
+		endEdgeBounds.top /= 20; /* twips */
+		endEdgeBounds.bottom /= 20; /* twips */
+			
 		ba.readUB(6); // Reserved
 		
 		var usesNonScalingStrokes = ba.readBool(),
@@ -1614,32 +2434,48 @@ function readDefineMorphShape(obj, tag, ba, withLineV2) {
 		ba.align();
 	}
 	
+	startBounds.left /= 20; /* twips */
+	startBounds.right /= 20; /* twips */
+	startBounds.top /= 20; /* twips */
+	startBounds.bottom /= 20; /* twips */
+	
+	endBounds.left /= 20; /* twips */
+	endBounds.right /= 20; /* twips */
+	endBounds.top /= 20; /* twips */
+	endBounds.bottom /= 20; /* twips */
+	
 	var endEdgesOffset = ba.readUI32(),
 		fillStyles = readFillStyleArray(ba, true, true, obj),
 		lineStyles = readLineStyleArray(ba, true, withLineV2, true, obj),
 		morph = {
-			type: "morph",
+			type: "Morph",
 			id: id,
 			fillStyles: fillStyles,
 			lineStyles: lineStyles,
 			start: {
-				type: "morph",
+				type: "Morph",
 				id: id,
 				bounds: startBounds,
 				edges: readEdges(ba, fillStyles, lineStyles, true, withLineV2, true, obj)
 			},
 			end: {
-				type: "morph",
+				type: "Morph",
 				id: id,
 				bounds: endBounds,
 				edges: readEdges(ba, fillStyles, lineStyles, true, withLineV2, true, obj)
 			}
 		};
-	
-	convert2SVG(morph, true, true);
-	convert2SVG(morph, true);
-	
+		
+	if (withLineV2) {
+		morph.start.edgeBounds = startEdgeBounds;
+		morph.end.edgeBounds = endEdgeBounds;
+		morph.usesNonScalingStrokes = usesNonScalingStrokes;
+		morph.usesScalingStrokes = usesScalingStrokes;
+	}
+		
 	morph.tag = withLineV2 ? 'defineMorphShape2' : 'defineMorphShape';
+	
+	morph2SVG(morph);
 	
 	store(obj, morph);
 	
@@ -1658,13 +2494,11 @@ DefineFont2 tags are the only font definitions that can be used for dynamic text
 
 The minimum file format version is SWF 3.
 */
-function readDefineFont2(obj, tag, ba) {
-	var startPos = ba.position;
-	
+function readDefineFont2(obj, tag, ba, isHiRes) {
 	var font = {};
+	font.type = 'Font';
 	font.id = ba.readUI16();
-	font.type = 'font';
-	font.tag = 'defineFont2';
+	font.tag = isHiRes ? 'defineFont3' : 'defineFont2';
 	font.hasLayout = ba.readBool();
 	font.info = {};
 	font.info.isShiftJIS = ba.readBool();
@@ -1675,42 +2509,71 @@ function readDefineFont2(obj, tag, ba) {
 	font.info.isItalics = ba.readBool();
 	font.info.isBold = ba.readBool();
 	font.info.languageCode = ba.readLANGCODE(); // SWF 5 or earlier: always 0 SWF 6 or later: language code
-	font.info.name = ba.readString(ba.readUI8());
-	font.info.codes = [];
+	font.info.nameLen = ba.readUI8();
+	font.info.name = ba.readString(font.info.nameLen);
 	font.numGlyphs = ba.readUI16();
-	font.glyphs = [];
-	font.dataSize = tag.contentLength - (ba.position - startPos);
+	if (font.numGlyphs > 0) font.info.codeTable = [];
+	if (font.numGlyphs > 0) font.glyphShapeTable = [];
+	if (font.numGlyphs > 0) font.offsetTable = [];
+	font.dataSize = tag.contentLength;
 	
 	var i = font.numGlyphs,
-		offsets = [],
 		tablesOffset = ba.position;
-		
-	while (i--) { offsets.push(font.info.useWideOffsets ? ba.readUI32() : ba.readUI16()); }
-	ba.seek(font.info.useWideOffsets ? 4 : 2);
 	
-	for(var i = 0, o = offsets[0]; o; o = offsets[++i]) {
-		ba.seek(tablesOffset + o, true);
-		font.glyphs.push(readGlyph(ba));
+	if (font.numGlyphs > 0)  {
+		while (i--) { font.offsetTable.push(font.info.useWideOffsets ? ba.readUI32() : ba.readUI16()); }
 	}
 	
-	i = font.numGlyphs;
-	while (i--) { font.info.codes.push(font.info.isWideCodes ? ba.readUI16() : ba.readUI8()); };
+	if (!isHiRes || (isHiRes && font.numGlyphs > 0)) font.codeTableOffset = font.info.useWideOffsets ? ba.readUI32() : ba.readUI16();
+		
+	if (font.numGlyphs > 0)  {	
+		for(var i = 0, o = font.offsetTable[0]; o; o = font.offsetTable[++i]) {
+			ba.seek(tablesOffset + o, true);
+			font.glyphShapeTable.push(readGlyph(ba, isHiRes));
+		}
+		
+		i = font.numGlyphs;
+		while (i--) { font.info.codeTable.push(font.info.isWideCodes ? ba.readUI16() : ba.readUI8()); };
+	}
 	
-	// Skip rest
-	ba.seek(tag.contentLength - (ba.position - startPos));
-	/*
-	if(font.hasLayout) font.ascent = ba.readSI16();
-	if(font.hasLayout) font.descent = ba.readSI16();
-	if(font.hasLayout) font.leading = ba.readSI16();
-	if(font.hasLayout) font.advanceTable = ba.readSI16(); // times numGlyphs
-	if(font.hasLayout) font.boundsTable = ba.readRect(); // times numGlyphs Not used in Flash Player through version 7 (but must be present).
+	if(font.hasLayout) font.ascent = ba.readSI16() / (isHiRes ? 20 : 1);
+	if(font.hasLayout) font.descent = ba.readSI16() / (isHiRes ? 20 : 1);
+	if(font.hasLayout) font.leading = ba.readSI16() / (isHiRes ? 20 : 1);
+	if(font.hasLayout && font.numGlyphs > 0) {
+		i = font.numGlyphs;
+		font.advanceTable = [];
+		while (i--) { font.advanceTable.push(ba.readSI16() / (isHiRes ? 20 : 1)); };
+	}
+	if(font.hasLayout && font.numGlyphs > 0) {
+		i = font.numGlyphs;
+		font.boundsTable = [];
+		while (i--) {
+			var rect = ba.readRect();
+			rect.left /= isHiRes ? 20 : 1;
+			rect.right /= isHiRes ? 20 : 1;
+			rect.top /= isHiRes ? 20 : 1;
+			rect.bottom /= isHiRes ? 20 : 1;
+			font.boundsTable.push(rect);
+		};
+	}
 	if(font.hasLayout) font.kerningCount = ba.readUI16(); // Not used in Flash Player through version 7 (always set to 0 to save space).
-	if(font.hasLayout) font.kerningTable = ba.readKerning(); // times kerning count Not used in Flash Player through version 7 (omit with KerningCount of 0).
-	*/
+	if(font.hasLayout) {
+		i = font.kerningCount;
+		font.kerningTable = [];
+		// KerningRecord
+		while (i--) { 
+			var kerningRecord = {
+				fontKerningCode1: font.info.isWideCodes ? ba.readUI16() : ba.readUI8(),
+				fontKerningCode2: font.info.isWideCodes ? ba.readUI16() : ba.readUI8(),
+				fontKerningAdjustment: ba.readSI16() / (isHiRes ? 20 : 1)
+			};
+			font.kerningTable.push(kerningRecord);
+		};
+	}
 	
 	store(obj, font);
 	
-	if (typeof obj.fonts == "undefined") obj.fonts = [];
+	obj.fonts = obj.fonts || [];
 	obj.fonts.push(font);
 	
 	return font;
@@ -1722,7 +2585,7 @@ function readGeneratorCommand(obj, tag, ba) {
 	cmd.version = ba.readUI32();
 	cmd.info = ba.readString();
 	
-	if (typeof obj.genCommands == "undefined") obj.genCommands = [];
+	obj.genCommands = obj.genCommands || [];
 	obj.genCommands.push(cmd);
 };
 
@@ -1737,10 +2600,25 @@ function readExportAssets(obj, tag, ba) {
 	var numSymbols = ba.readUI16();
 	while(numSymbols--) {
 		var tag2 = {id:ba.readUI16(), exportName:ba.readString()};
-		trace2('readExportAssets', tag2.id, tag2.exportName, '***');
 		store(obj, tag2);
 	}
 };
+
+// Type 57
+function readImportAssets(obj, tag, ba, isV2) {
+	var url = ba.readString();
+	
+	if (isV2) {
+		ba.readUI8(); // Reserved, 1
+		ba.readUI8(); // Reserved, 0
+	}
+	
+	var count = ba.readUI16();
+	while(count--) {
+		var tag2 = {id:ba.readUI16(), exportName:ba.readString(), url:url};
+		store(obj, tag2);
+	}
+}
 
 // Type 58
 function readEnableDebugger(obj, tag, ba, isV2) {
@@ -1749,11 +2627,692 @@ function readEnableDebugger(obj, tag, ba, isV2) {
 	if (tag.contentLength > 0) obj.debugPassword = ba.readString((tag.contentLength - (isV2 ? 2 : 0)), true);
 };
 
+// Type 59
+function readDoInitAction(obj, tag, ba) {
+	// spriteID actions
+	var spr = obj.dictionary[ba.readUI16()];
+	
+	var actionsRaw = [], code;
+	while ((code = ba.readUI8())) { // Action Code or ActionEndFlag
+		actionsRaw.push(readActionRecord(code, ba));
+	}
+	
+	var as = actionsRaw.length ? convertActions(actionsRaw) : [];
+	spr.initAction = {type:'ActionScript', actions:actionsRaw, actionscript:as};
+};
+
+function readActionRecord(code, ba) {
+	var o = { code:'0x' + code.toString(16) }, prePos = ba.position - 4;
+	if (code >= 0x80) var actionLength = ba.readUI16();
+	
+	// SWF 1 & 2 Actions //
+	
+	// no arguments
+	if (code == 0x00) {
+		o.action = 'ActionNone';
+	} else
+	
+	// no arguments
+	if (code == 0x80) {
+		o.action = 'ActionHasLength';
+	} else
+	
+	// frame num (int)
+	if (code == 0x81) {
+		o.action = 'ActionGotoFrame';
+		o.frame = ba.readUI16() + 1;
+	} else
+	
+	// url (STR), window (STR)
+	if (code == 0x83) {
+		o.action = 'ActionGetURL';
+		o.urlString = ba.readString();
+		o.targetString = ba.readString();
+	} else
+	
+	// no arguments
+	if (code == 0x04) {
+		o.action = 'ActionNextFrame';
+	} else
+	
+	// no arguments
+	if (code == 0x05) {
+		o.action = 'ActionPreviousFrame';
+	} else
+	
+	// no arguments
+	if (code == 0x06) {
+		o.action = 'ActionPlay';
+	} else
+	
+	// no arguments
+	if (code == 0x07) {
+		o.action = 'ActionStop';
+	} else
+	
+	// no arguments
+	if (code == 0x08) {
+		o.action = 'ActionToggleQuality';
+	} else
+	
+	// no arguments
+	if (code == 0x09) {
+		o.action = 'ActionStopSounds';
+	} else
+	
+	// frame needed (int), actions to skip (BYTE)
+	if (code == 0x8A) {
+		o.action = 'ActionWaitForFrame';
+		o.frame = ba.readUI16();
+		o.skipCount = ba.readUI8();
+	} else
+	
+	// SWF 3 Actions //
+	
+	// name (STR)
+	if (code == 0x8B) {
+		o.action = 'ActionSetTarget';
+		o.targetName = ba.readString();
+	} else
+	
+	// name (STR)
+	if (code == 0x8C) {
+		o.action = 'ActionGoToLabel';
+		o.label = ba.readString();
+	} else
+	
+	// SWF 4 Actions //
+	
+	// Stack IN: number, number, OUT: number
+	if (code == 0x0A) {
+		o.action = 'ActionAdd';
+	} else
+	
+	// Stack IN: number, number, OUT: number
+	if (code == 0x0B) {
+		o.action = 'ActionSubtract';
+	} else
+	
+	// Stack IN: number, number, OUT: number
+	if (code == 0x0C) {
+		o.action = 'ActionMultiply';
+	} else
+	
+	// Stack IN: dividend, divisor, OUT: number
+	if (code == 0x0D) {
+		o.action = 'ActionDivide';
+	} else
+	
+	// Stack IN: number, number, OUT: bool
+	if (code == 0x0E) {
+		o.action = 'ActionEquals';
+	} else
+	
+	// Stack IN: number, number, OUT: bool
+	if (code == 0x0F) {
+		o.action = 'ActionLess';
+	} else
+	
+	// Stack IN: bool, bool, OUT: bool
+	if (code == 0x10) {
+		o.action = 'ActionAnd';
+	} else
+	
+	// Stack IN: bool, bool, OUT: bool
+	if (code == 0x11) {
+		o.action = 'ActionOr';
+	} else
+	
+	// Stack IN: bool, OUT: bool
+	if (code == 0x12) {
+		o.action = 'ActionNot';
+	} else
+	
+	// Stack IN: string, string, OUT: bool
+	if (code == 0x13) {
+		o.action = 'ActionStringEquals';
+	} else
+	
+	// Stack IN: string, OUT: number
+	if (code == 0x14) {
+		o.action = 'ActionStringLength';
+	} else
+	
+	// Stack IN: string, strng, OUT: string
+	if (code == 0x21) {
+		o.action = 'ActionStringAdd';
+	} else
+	
+	// Stack IN: string, index, count, OUT: substring
+	if (code == 0x15) {
+		o.action = 'ActionStringExtract';
+	} else
+	
+	// type (BYTE), value (STRING or FLOAT)
+	if (code == 0x96) {
+		o.action = 'ActionPush';
+		o.stack = [];
+		var end = ba.position + actionLength;
+		do {
+			var o2 = {};
+			o2.type = ba.readUI8();
+			switch(o2.type) {
+				case 0 : o2.value = ba.readString(); o2.type = 'string'; break;
+				case 1 : o2.value = ba.readFloat(); o2.type = 'float'; break;
+				case 2 : /* null */ o2.type = 'null';  break;
+				case 3 : /* undefined */ o2.type = 'undefined';  break;
+				case 4 : o2.value = ba.readUI8(); o2.type = 'register'; break;
+				case 5 : o2.value = ba.readUI8(); o2.type = 'boolean'; break;
+				case 6 : o2.value = ba.readDouble(); o2.type = 'double'; break;
+				case 7 : o2.value = ba.readUI32(); o2.type = 'integer'; break;
+				case 8 : o2.value = ba.readUI8(); o2.type = 'constant'; break; // Constant pool index (for indexes < 256)
+				case 9 : o2.value = ba.readUI16(); o2.type = 'constant'; break; // Constant pool index (for indexes >= 256)
+			}
+			o.stack.push(o2);
+		} while (ba.position < end);
+	} else
+	
+	// no arguments
+	if (code == 0x17) {
+		o.action = 'ActionPop';
+	} else
+	
+	// Stack IN: number, OUT: integer
+	if (code == 0x18) {
+		o.action = 'ActionToInteger';
+	} else
+	
+	// offset (int)
+	if (code == 0x99) {
+		o.action = 'ActionJump';
+		o.branchOffset = ba.readSI16();
+	} else
+	
+	// offset (int) Stack IN: bool
+	if (code == 0x9D) {
+		o.action = 'ActionIf';
+		o.branchOffset = ba.readSI16();
+	} else
+	
+	// Stack IN: name
+	if (code == 0x9E) {
+		o.action = 'ActionCall';
+	} else
+	
+	// Stack IN: name, OUT: value
+	if (code == 0x1C) {
+		o.action = 'ActionGetVariable';
+	} else
+	
+	// Stack IN: name, value
+	if (code == 0x1D) {
+		o.action = 'ActionSetVariable';
+	} else
+	
+	// method (BYTE) Stack IN: url, window
+	if (code == 0x9A) {
+		o.action = 'ActionGetURL2';
+		/*
+		0 = None
+		1 = GET
+		2 = POST
+		*/
+		o.sendVarsMethod = ba.readUB(2);
+		
+		ba.readUB(4); //reserved, always 0
+		
+		/*
+		0 = Target is a browser window
+		1 = Target is a path to a sprite
+		*/
+		o.loadTargetFlag = ba.readUB(1);
+		
+		/*
+		0 = No variables to load
+		1 = Load variables
+		*/
+		o.loadVariablesFlag = ba.readUB(1);
+		ba.align();
+	} else
+	
+	// flags (BYTE) Stack IN: frame
+	if (code == 0x9F) {
+		o.action = 'ActionGotoFrame2';
+		ba.readUB(6); // reserved, always 0
+		o.sceneBiasFlag = ba.readUB(1);
+		o.playFlag = ba.readUB(1);// 0 = Go to frame and stop, 1 = Go to frame and play
+		ba.align();
+		if (o.sceneBiasFlag == 1) o.sceneBias = ba.readUI16();
+	} else
+	
+	// Stack IN: target
+	if (code == 0x20) {
+		o.action = 'ActionSetTarget2';
+	} else
+	
+	// Stack IN: target, property, OUT: value
+	if (code == 0x22) {
+		o.action = 'ActionGetProperty';
+	} else
+	
+	// Stack IN: target, property, value
+	if (code == 0x23) {
+		o.action = 'ActionSetProperty';
+	} else
+	
+	// Stack IN: source, target, depth
+	if (code == 0x24) {
+		o.action = 'ActionCloneSprite';
+	} else
+	
+	// Stack IN: target
+	if (code == 0x25) {
+		o.action = 'ActionRemoveSprite';
+	} else
+	
+	// Stack IN: message
+	if (code == 0x26) {
+		o.action = 'ActionTrace';
+	} else
+	
+	// Stack IN: no constraint: 0, center, target
+	// constraint: x1, y1, x2, y2, 1, center, target
+	if (code == 0x27) {
+		o.action = 'ActionStartDrag';
+	} else
+	
+	// no arguments
+	if (code == 0x28) {
+		o.action = 'ActionEndDrag';
+	} else
+	
+	// Stack IN: string, string, OUT: bool
+	if (code == 0x29) {
+		o.action = 'ActionStringLess';
+	} else
+	
+	// skipCount (BYTE) Stack IN: frame
+	if (code == 0x8D) {
+		o.action = 'ActionWaitForFrame2';
+		o.skipCount = ba.readUI8();
+	} else
+	
+	// Stack IN: maximum, OUT: result
+	if (code == 0x30) {
+		o.action = 'ActionRandomNumber';
+	} else
+	
+	// Stack IN: string, OUT: length
+	if (code == 0x31) {
+		o.action = 'ActionMBStringLength';
+	} else
+	
+	// Stack IN: character, OUT: ASCII code
+	if (code == 0x32) {
+		o.action = 'ActionCharToAscii';
+	} else
+	
+	// Stack IN: ASCII code, OUT: character
+	if (code == 0x33) {
+		o.action = 'ActionAsciiToChar';
+	} else
+	
+	// Stack OUT: milliseconds since Player start
+	if (code == 0x34) {
+		o.action = 'ActionGetTime';
+	} else
+	
+	// Stack IN: string, index, count, OUT: substring
+	if (code == 0x35) {
+		o.action = 'ActionMBStringExtract';
+	} else
+	
+	// Stack IN: character, OUT: ASCII code
+	if (code == 0x36) {
+		o.action = 'ActionMBCharToAscii';
+	} else
+	
+	// Stack IN: ASCII code, OUT: character
+	if (code == 0x37) {
+		o.action = 'ActionMBAsciiToChar';
+	} else
+	
+	// SWF 5 Actions //
+	
+	// Stack IN: name of object to delete
+	if (code == 0x3A) {
+		o.action = 'ActionDelete';
+	} else
+	
+	// name (STRING), body (BYTES)
+	if (code == 0x9B) {
+		o.action = 'ActionDefineFunction';
+		o.functionName = ba.readString();
+		o.numParams = ba.readUI16();
+		o.parameters = [];
+		for (var i = 0; i < o.numParams; i++) {
+			o.parameters.push(ba.readString());
+		}
+		o.codeSize = ba.readUI16();
+	} else
+	
+	// Stack IN: name
+	if (code == 0x3B) {
+		o.action = 'ActionDelete2';
+	} else
+	
+	// Stack IN: name, value
+	if (code == 0x3C) {
+		o.action = 'ActionDefineLocal';
+	} else
+	
+	// Stack IN: function, numargs, arg1, arg2, ... argn
+	if (code == 0x3D) {
+		o.action = 'ActionCallFunction';
+	} else
+	
+	// Stack IN: value to return
+	if (code == 0x3E) {
+		o.action = 'ActionReturn';
+	} else
+	
+	// Stack IN: x, y Stack OUT: x % y
+	if (code == 0x3F) {
+		o.action = 'ActionModulo';
+	} else
+	
+	// like CallFunction but constructs object
+	if (code == 0x40) {
+		o.action = 'ActionNewObject';
+	} else
+	
+	// Stack IN: name
+	if (code == 0x41) {
+		o.action = 'ActionDefineLocal2';
+	} else
+	
+	// Stack IN: //# of elems, arg1, arg2, ... argn
+	if (code == 0x42) {
+		o.action = 'ActionInitArray';
+	} else
+	
+	// Stack IN: //# of elems, arg1, name1, ...
+	if (code == 0x43) {
+		o.action = 'ActionInitObject';
+	} else
+	
+	// Stack IN: object, Stack OUT: type of object
+	if (code == 0x44) {
+		o.action = 'ActionTypeOf';
+	} else
+	
+	// Stack IN: object, Stack OUT: target path
+	if (code == 0x45) {
+		o.action = 'ActionTargetPath';
+	} else
+	
+	// Stack IN: name, Stack OUT: children ended by null
+	if (code == 0x46) {
+		o.action = 'ActionEnumerate';
+	} else
+	
+	// register number (BYTE, 0-31)
+	if (code == 0x87) {
+		o.action = 'ActionStoreRegister';
+		o.registerNumber = ba.readUI8();
+	} else
+	
+	// Like ActionAdd, but knows about types
+	if (code == 0x47) {
+		o.action = 'ActionAdd2';
+	} else
+	
+	// Like ActionLess, but knows about types
+	if (code == 0x48) {
+		o.action = 'ActionLess2';
+	} else
+	
+	// Like ActionEquals, but knows about types
+	if (code == 0x49) {
+		o.action = 'ActionEquals2';
+	} else
+	
+	// Stack IN: object Stack OUT: number
+	if (code == 0x4A) {
+		o.action = 'ActionToNumber';
+	} else
+	
+	// Stack IN: object Stack OUT: string
+	if (code == 0x4B) {
+		o.action = 'ActionToString';
+	} else
+	
+	// pushes duplicate of top of stack
+	if (code == 0x4C) {
+		o.action = 'ActionPushDuplicate';
+	} else
+	
+	// swaps top two items on stack
+	if (code == 0x4D) {
+		o.action = 'ActionStackSwap';
+	} else
+	
+	// Stack IN: object, name, Stack OUT: value
+	if (code == 0x4E) {
+		o.action = 'ActionGetMember';
+	} else
+	
+	// Stack IN: object, name, value
+	if (code == 0x4F) {
+		o.action = 'ActionSetMember';
+	} else
+	
+	// Stack IN: value, Stack OUT: value+1
+	if (code == 0x50) {
+		o.action = 'ActionIncrement';
+	} else
+	
+	// Stack IN: value, Stack OUT: value-1
+	if (code == 0x51) {
+		o.action = 'ActionDecrement';
+	} else
+	
+	// Stack IN: object, name, numargs, arg1, arg2, ... argn
+	if (code == 0x52) {
+		o.action = 'ActionCallMethod';
+	} else
+	
+	// Like ActionCallMethod but constructs object
+	if (code == 0x53) {
+		o.action = 'ActionNewMethod';
+	} else
+	
+	// body length: int, Stack IN: object
+	if (code == 0x94) { 
+		o.action = 'ActionWith';
+		o.size = ba.readUI16();
+		//o.code = ba.readString(o.size);
+	} else
+	
+	// Attaches constant pool
+	if (code == 0x88) {
+		o.action = 'ActionConstantPool';
+		o.count = ba.readUI16();
+		o.constantPool = [];
+		while (o.count--) {
+			o.constantPool.push(ba.readString());
+		}
+	} else
+	
+	// Activate/deactivate strict mode
+	if (code == 0x89) {
+		o.action = 'ActionStrictMode';
+	} else
+	
+	// Stack IN: number, number, OUT: number
+	if (code == 0x60) {
+		o.action = 'ActionBitAnd';
+	} else
+	
+	// Stack IN: number, number, OUT: number
+	if (code == 0x61) {
+		o.action = 'ActionBitOr';
+	} else
+	
+	// Stack IN: number, number, OUT: number
+	if (code == 0x62) {
+		o.action = 'ActionBitXor';
+	} else
+	
+	// Stack IN: number, number, OUT: number
+	if (code == 0x63) {
+		o.action = 'ActionBitLShift';
+	} else
+	
+	// Stack IN: number, number, OUT: number
+	if (code == 0x64) {
+		o.action = 'ActionBitRShift';
+	} else
+	
+	// Stack IN: number, number, OUT: number
+	if (code == 0x65) {
+		o.action = 'ActionBitURShift';
+	} else
+	
+	// SWF 6 Actions //
+	
+	// Stack IN: object, class OUT: boolean
+	if (code == 0x54) {
+		o.action = 'ActionInstanceOf';
+	} else
+	
+	// Stack IN: object, Stack OUT: children ended by null
+	if (code == 0x55) {
+		o.action = 'ActionEnumerate2';
+	} else
+	
+	// Stack IN: something, something, OUT: bool
+	if (code == 0x66) {
+		o.action = 'ActionStrictEquals';
+	} else
+	
+	// Stack IN: something, something, OUT: bool
+	if (code == 0x67) {
+		o.action = 'ActionGreater';
+	} else
+	
+	// Stack IN: something, something, OUT: bool
+	if (code == 0x68) {
+		o.action = 'ActionStringGreater';
+	} else
+	
+	// SWF 7 Actions //
+	
+	// name (STRING), numParams (WORD), registerCount (BYTE)
+	if (code == 0x8E) {
+		o.action = 'ActionDefineFunction2';
+		o.functionName = ba.readString();
+		o.numParams = ba.readUI16();
+		o.registerCount = ba.readUI8();
+		o.preloadParentFlag = ba.readUB(1);
+		// 0 = Don't preload _parent into register
+		// 1 = Preload _parent into register
+		o.preloadRootFlag = ba.readUB(1);
+		// 0 = Don't preload _root into register
+		// 1 = Preload _root into register
+		o.suppressSuperFlag = ba.readUB(1);
+		// 0 = Create super variable
+		// 1 = Don't create super variable
+		o.preloadSuperFlag = ba.readUB(1);
+		o.suppressArgumentsFlag = ba.readUB(1);
+		o.preloadArgumentsFlag = ba.readUB(1);
+		o.suppressThisFlag = ba.readUB(1);
+		o.preloadThisFlag = ba.readUB(1);
+		ba.readUB(7); //Reserved
+		o.preloadGlobalFlag = ba.readUB(1);
+		o.parameters = [];
+		for (var i = 0; i < o.numParams; i++) {
+			// REGISTERPARAM
+			o.parameters.push({register:ba.readUI8(), paramName:ba.readString() });
+		}
+		o.codeSize = ba.readUI16();
+	} else
+	
+	// no arguments
+	if (code == 0x8F) {
+		o.action = 'ActionTry';
+		ba.readUB(5); // Reserved
+		o.CatchInRegisterFlag = ba.readUB(1);
+		o.FinallyBlockFlag = ba.readUB(1);
+		o.CatchBlockFlag = ba.readUB(1);
+		ba.align();
+		o.TrySize = ba.readUI16();
+		o.CatchSize = ba.readUI16();
+		o.FinallySize = ba.readUI16();
+		if (o.CatchInRegisterFlag == 0) {
+			o.CatchName = ba.readString();
+		} else if (o.CatchInRegisterFlag == 1) {
+			o.CatchRegister = ba.readUI8();
+		}
+		o.TryBody = ba.readString(o.TrySize); // says ba.readUI8(size) ???
+		o.CatchBody = ba.readString(o.CatchSize);
+		o.FinallyBody = ba.readString(o.FinallySize);
+	} else
+	
+	// no arguments
+	if (code == 0x2A) {
+		o.action = 'ActionThrow';
+	} else
+	
+	// no arguments
+	if (code == 0x2B) {
+		o.action = 'ActionCastOp';
+	} else
+	
+	// no arguments
+	if (code == 0x2C) {
+		o.action = 'ActionImplementsOp';
+	} else
+		
+	// stack in: baseclass, classname, constructor
+	if (code == 0x69) {
+		o.action = 'ActionExtends';
+	} else
+	
+	// Misc Actions //
+	
+	// nop
+	if (code == 0x77) {
+		o.action = 'ActionNOP';
+	} else
+	
+	// halt script execution
+	if (code == 0x5F) {
+		o.action = 'ActionHalt';
+	} else
+	
+	// I think this is what they are using...
+	if (code == 0xAA) {
+		o.action = 'ActionQuickTime';
+	} else
+	
+	// Unknown actioncode
+	{
+		o.action = '???';
+	}
+	
+	o.pos = prePos;
+	if (code >= 0x80) o.length = actionLength;
+	
+	return o;
+}
+
 // Type 60
 function readDefineVideoStream(obj, tag, ba) {
 	var vid = {};
-	vid.type = 'video';
+	vid.type = 'Video';
 	vid.id = ba.readUI16();
+	vid.tag = 'defineVideoStream';
 	vid.numFrames = ba.readUI16();
 	vid.width = ba.readUI16();
 	vid.height = ba.readUI16();
@@ -1790,7 +3349,7 @@ function readDefineVideoStream(obj, tag, ba) {
 	
 	store(obj, vid);
 	
-	if(typeof obj.videos == "undefined") obj.videos = [];
+	obj.videos = obj.videos || [];
 	obj.videos.push(vid);
 };
 
@@ -1912,10 +3471,27 @@ function readDefineFontInfo2(obj, tag, ba) {
 	readDefineFontInfo(obj, tag, ba, true);
 };
 
+// Type 63
+function readDebugID(obj, tag, ba) {
+	obj.uuid = ba.readString(tag.contentLength);
+}
+
 // Type 64
 function readEnableDebugger2(obj, tag, ba) {
 	readEnableDebugger(obj, tag, ba, true);
 };
+
+// Type 65
+function readScriptLimits(obj, tag, ba) {
+	obj.maxRecursionDepth = ba.readUI16();
+	obj.scriptTimeoutSeconds = ba.readUI16();
+}
+
+// Type 66
+function readSetTabIndex(obj, tag, ba) {
+	obj.depth = ba.readUI16();
+	obj.tabIndex = ba.readUI16();
+}
 
 // Type 69
 function readFileAttributes(obj, tag, ba) {
@@ -1947,15 +3523,201 @@ function readFileAttributes(obj, tag, ba) {
 	ba.readByte();
 };
 
+// Type 70
+function readPlaceObject3(obj, tag, ba) {
+	obj.stage = obj.stage || [];
+	var o = {
+		frame: obj.frameIndex,
+		hasClipActions: ba.readBoolean(),
+		hasClipDepth: ba.readBoolean(),
+		hasName: ba.readBoolean(),
+		hasRatio: ba.readBoolean(),
+		hasColorTransform: ba.readBoolean(),
+		hasMatrix: ba.readBoolean(),
+		hasCharacter: ba.readBoolean(),
+		move: ba.readBoolean()
+	};
+	ba.readUB(3) // Reserved, must be 0
+	o.hasImage = ba.readBoolean();
+	o.hasClassName = ba.readBoolean();
+	o.hasCacheAsBitmap = ba.readBoolean();
+	o.hasBlendMode = ba.readBoolean();
+	o.hasFilterList = ba.readBoolean();
+	o.depth = ba.readUI16();
+	
+	if (o.hasClassName || (o.hasImage && o.hasCharacter)) o.className = ba.readString();
+	if (o.hasCharacter) o.id = ba.readUI16();
+	if (o.hasMatrix) o.matrix = ba.readMatrix();
+	if (o.hasColorTransform) o.colorTransform = ba.readCXFormWithAlpha();
+	if (o.hasRatio) o.ratio = ba.readUI16();
+	if (o.hasName) o.name = ba.readString();
+	if (o.hasClipDepth) o.clipDepth = ba.readUI16();
+	if (o.hasFilterList) o.surfaceFilterList = readFilterList(obj,tag, ba);
+	if (o.hasBlendMode) o.blendMode = ba.readUI8();
+	if (o.hasCacheAsBitmap) o.bitmapCache = ba.readUI8();
+	if (o.hasClipActions) o.clipActions = readClipActions(obj, tag, ba);
+	
+	obj.stage.push(o);
+	trace2('readPlaceObject3', o);
+}
+
+function readFilterList(obj, tag, ba) {
+	var o = [], numberOfFilters = ba.readUI8();
+	while (numberOfFilters--) {
+		o.push(readFilter(obj, tag, ba));
+	}
+	return o;
+}
+
+function readFilter(obj, tag, ba) {
+	var o = {
+		id: ba.readUI8()
+	};
+	if (o.id == 0) o.dropShadowFilter = readDropShadowFilter(obj, tag, ba);
+	if (o.id == 1) o.blurFilter = readBlurFilter(obj, tag, ba);
+	if (o.id == 2) o.glowFilter = readGlowFilter(obj, tag, ba);
+	if (o.id == 3) o.bevelFilter = readBevelFilter(obj, tag, ba);
+	if (o.id == 4) o.gradientGlowFilter = readGradientGlowFilter(obj, tag, ba);
+	if (o.id == 5) o.convolutionFilter = readConvolutionFilter(obj, tag, ba);
+	if (o.id == 6) o.colorMatrixFilter = readColorMatrixFilter(obj, tag, ba);
+	if (o.id == 7) o.gradientBevelFilter = readGradientBevelFilter(obj, tag, ba);
+	return o;
+}
+
+function readDropShadowFilter(obj, tag, ba) {
+	var o = {
+		dropShadowColor: ba.readRGBA(),
+		blurX: ba.readFixed(),
+		blurY: ba.readFixed(),
+		angle: ba.readFixed(),
+		distance: ba.readFixed(),
+		strength: ba.readFixed8(),
+		innerShadow: ba.readBoolean(),
+		knockout: ba.readBoolean(),
+		compositeSource: ba.readBoolean(),
+		passes: ba.readUB(5)
+	};
+	return o;
+}
+
+function readBlurFilter(obj, tag, ba) {
+	var o = {
+		blurX: ba.readFixed(),
+		blurY: ba.readFixed(),
+		passes: ba.readUB(5)
+	};
+	ba.readUB(3); // Reserved, must be 0;
+	return o;
+}
+
+function readGlowFilter(obj, tag, ba) {
+	var o = {
+		glowColor: ba.readRGBA(),
+		blurX: ba.readFixed(),
+		blurY: ba.readFixed(),
+		strength: ba.readFixed8(),
+		innerGlow: ba.readBoolean(),
+		knockout: ba.readBoolean(),
+		compositeSource: ba.readBoolean(),
+		passes: ba.readUB(5)
+	};
+	return o;
+}
+
+function readGradientGlowFilter(obj, tag, ba) {
+	var o = {
+		numColors: ba.readUI8(),
+		gradientColors: [],
+		gradientRatio: []
+	},
+	
+	i = o.numColors;
+	while (i--) {
+		o.gradientColors.push(ba.readRGBA());
+	}
+	
+	i = o.numColors;
+	while (i--) {
+		o.gradientRatio.push(ba.readUI8());
+	}
+	
+	o.blurX = ba.readFixed();
+	o.blurY = ba.readFixed();
+	o.angle = ba.readFixed();
+	o.distance = ba.readFixed();
+	o.strength = ba.readFixed8();
+	o.innerShadow = ba.readBoolean();
+	o.knockout = ba.readBoolean();
+	o.compositeSource = ba.readBoolean();
+	o.onTop = ba.readBoolean();
+	o.passes = ba.readUB(4);
+		
+	return o;
+}
+
+function readBevelFilter(obj, tag, ba) {
+	var o = {
+		shadowColor: ba.readRGBA(),
+		highlightColor: ba.readRGBA(),
+		blurX: ba.readFixed(),
+		blurY: ba.readFixed(),
+		angle: ba.readFixed(),
+		distance: ba.readFixed(),
+		strength: ba.readFixed8(),
+		innerShadow: ba.readBoolean(),
+		knockout: ba.readBoolean(),
+		compositeSource: ba.readBoolean(),
+		onTop: ba.readBoolean(),
+		passes: ba.readUB(5)
+	};
+	return o;
+}
+
+function readGradientBevelFilter(obj, tag, ba) {
+	return readGradientGlowFilter(obj, tag, ba);
+}
+
+function readConvolutionFilter(obj, tag, ba) {
+	var o = {};
+	o.matrixX = ba.readUI8();
+	o.matrixY = ba.readUI8();
+	o.divisor = ba.readFloat();
+	o.bias = ba.readFloat();
+	o.matrix = []
+	var i = o.matrixX * o.matrixY;
+	while (i--) {
+		o.matrix.push(ba.readFloat());
+	}
+	o.defaultColor = ba.readRGBA();
+	ba.readUB(6); // Reserved, must be 0
+	o.clamp = ba.readBoolean();
+	o.preserveAlpha = ba.readBoolean();
+	return o;
+}
+
+function readColorMatrixFilter(obj, tag, ba) {
+	var o = [], i = 20;
+	while (i--) {
+		o.push(ba.readFloat());
+	}
+	return o;
+}
+
+// Type 71
+function readImportAssets2(obj, tag, ba) {
+	readImportAssets(obj, tag, ba, true);
+}
+
 // Type 74
 function readCSMTextSettings(obj, tag, ba) {
 	var id = ba.readUI16(),
 		txt = obj.dictionary[id];
-	txt.useFlashType = ba.readUB(2);
-	txt.gridFit = ba.readUB(3);
+	txt.csm = {};
+	txt.csm.useFlashType = ba.readUB(2);
+	txt.csm.gridFit = ba.readUB(3);
 	ba.readUB(3); // Reserved, always 0
-	txt.thickness = ba.readFixed();
-	txt.sharpness = ba.readFixed();
+	txt.csm.thickness = ba.readFixed();
+	txt.csm.sharpness = ba.readFixed();
 	ba.readUI8(); // Reserved, always 0
 }
 
@@ -1970,8 +3732,7 @@ The minimum file format version is SWF 8.
 */
 function readDefineFont3(obj, tag, ba) {
 	//GlyphShapeTable at 20 times resolution
-	var font = readDefineFont2(obj, tag, ba);
-	font.tag = 'defineFont3';
+	readDefineFont2(obj, tag, ba, true);
 };
 
 // Type 76
@@ -1984,54 +3745,203 @@ function readMetadata(obj, tag, ba) {
 	obj.metadata = ba.readString();
 };
 
+// Type 82
+function readDoABC(obj, tag, ba) {
+	var startPos = ba.position;
+	/*
+	A 32-bit flags value, which may
+	contain the following bits set:
+	kDoAbcLazyInitializeFlag = 1:
+	Indicates that the ABC block
+	should not be executed
+	immediately, but only parsed. A
+	later finddef may cause its
+	scripts to execute.
+	*/
+	obj.flags = ba.readUI32();
+	obj.name = ba.readString();
+	
+	/*
+	A block of .abc bytecode to be
+	parsed by the ActionScript 3.0
+	virtual machine, up to the end
+	of the tag.
+	*/
+	obj.ABCData = ba.readBytes(tag.contentLength - (ba.position - startPos));
+	// www.adobe.com/go/avm2overview/
+}
+
 // Type 83
 function readDefineShape4(obj, tag, ba) {
 	readDefineShape(obj, tag, ba, true, true);
 }
 
 // Type 84
+// http://www.toyota.com/vehicles/minisite/newprius/media/swf/PriusGraphics.swf
 function readDefineMorphShape2(obj, tag, ba) {
 	readDefineMorphShape(obj, tag, ba, true);
+}
+
+// Type 86
+function readDefineSceneAndFrameLabelData(obj, tag, ba) {
+	obj.scenes = [];
+	obj.frameLabels = [];
+	var sceneCount = ba.readEncodedU32();
+	while (sceneCount--) {
+		obj.scenes.push({ offset:ba.readEncodedU32(), name:ba.readString()});
+	}
+	var frameLabelCount = ba.readEncodedU32();
+	while (frameLabelCount--) {
+		obj.frameLabels.push({ frameNum:ba.readEncodedU32(), frameLabel:ba.readString()});
+	}
 }
 
 // Type 87
 function readDefineBinaryData(obj, tag, ba) {
 	var startPos = ba.position;
 	var bd = {};
-	bd.type = 'binary';
+	bd.type = 'Binary';
 	bd.id = ba.readUI16();
+	bd.tag = 'defineBinaryData';
 	ba.readUI32(); // Reserved
 	bd.data = ba.readBytes(tag.contentLength - (ba.position - startPos));
 	
-	// Is PixelBender?
+	// Is PixelBender? http://dl.dropbox.com/u/340823/Flashbug%20Demo.swf
 	try {
+		function getType(t) {
+			switch(t) {
+				case 0x01: return 'TFloat';
+				case 0x02: return 'TFloat2';
+				case 0x03: return 'TFloat3';
+				case 0x04: return 'TFloat4';
+				case 0x05: return 'TFloat2x2';
+				case 0x06: return 'TFloat3x3';
+				case 0x07: return 'TFloat4x4';
+				case 0x08: return 'TInt';
+				case 0x09: return 'TInt2';
+				case 0x0A: return 'TInt3';
+				case 0x0B: return 'TInt4';
+				case 0x0C: return 'TString';
+				default: return "Unknown type 0x" + t.toString(16);
+			}
+		}
+		
+		function readValue(t, ba2) {
+			switch(t) {
+				case 0x01:
+					return {f1:ba2.readFloat(false)};
+				case 0x02:
+					return { f1:ba2.readFloat(false), f2:ba2.readFloat(false)};
+				case 0x03:
+					return { f1:ba2.readFloat(false), f2:ba2.readFloat(false), f3:ba2.readFloat(false)};
+				case 0x04:
+					return { f1:ba2.readFloat(false), f2:ba2.readFloat(false), f3:ba2.readFloat(false), f4:ba2.readFloat(false)};
+				case 0x05:
+					var a = [], i = 4;
+					while (i--) {
+						a.push(ba2.readFloat(false));
+					}
+					return a;
+				case 0x06:
+					var a = [], i = 9;
+					while (i--) {
+						a.push(ba2.readFloat(false));
+					}
+					return a;
+				case 0x07:
+					var a = [], i = 16;
+					while (i--) {
+						a.push(ba2.readFloat(false));
+					}
+					return a;
+				case 0x08:
+					return ba2.readUI16(false);
+				case 0x09:
+					return {i1:ba2.readUI16(false), il2:ba2.readUI16(false)};
+				case 0x0A:
+					return {i1:ba2.readUI16(false), il2:ba2.readUI16(false), i3:ba2.readUI16(false)};
+				case 0x0B:
+					return {i1:ba2.readUI16(false), il2:ba2.readUI16(false), i3:ba2.readUI16(false), i4:ba2.readUI16(false)};
+				case 0x0C:
+					return ba2.readString();
+			};
+		}
+
 		function readOPCode(ba2, bd) {
 			var op = ba2.readUI8();
 			switch(op) {
-				case 0xA5 :
+				case 0xA0 : /* Kernel Metadata */
 					bd.isPBJ = true;
-					bd.pbVersion = ba2.readUI32(false);
+					bd.pbMetadata = bd.pbMetadata || {};
+					
+					var type = ba2.readByte();
+					var key = ba2.readString();
+					var value = readValue(type, ba2);
+					bd.pbMetadata[key] = value;
 					break;
-				case 0xA4 :
+				case 0xA1 : /* Parameter */
+					bd.isPBJ = true;
+					bd.pbParams = bd.pbParams || [];
+					
+					var qualifier = ba2.readByte();
+					var type = ba2.readByte();
+					var reg = ba2.readUI16(false);
+					var mask = ba2.readByte();
+					var name = ba2.readString();
+					switch(type) {
+						case 0x05: mask = 0xF;
+						case 0x06: mask = 0xF;
+						case 0x07: mask = 0xF;
+					}
+					
+					bd.pbParams.push({ name:name, metas:{}, type:getType(type), out:qualifier == 2/*, reg:dstReg(reg,mask) */});
+					break;
+				case 0xA2 : /* Parameter Metadata */
+					bd.isPBJ = true;
+					bd.pbParams = bd.pbParams || [];
+					
+					var type = ba2.readByte();
+					var key = ba2.readString();
+					var value = readValue(type, ba2);
+					bd.pbParams[bd.pbParams.length - 1].metas[key] = value;
+					break;
+				case 0xA3 : /* Texture */
+					bd.isPBJ = true;
+					bd.pbTextures = bd.pbTextures || [];
+					
+					var index = ba2.readByte();
+					var channels = ba2.readByte();
+					var name = ba2.readString();
+					bd.pbTextures.push({ name:name, metas:{}, channels:channels, index:index });
+					break;
+				case 0xA4 : /* Name */
 					var len = ba2.readUI16(false);
 					bd.isPBJ = true;
 					bd.pbName = ba2.readString(len);
 					break;
+				case 0xA5 : /* Version */
+					bd.isPBJ = true;
+					bd.pbVersion = ba2.readUI32(false);
+					break;
+				
 			}
+			return op;
 		}
 		
 		var ba2 = new Flashbug.ByteArrayString(bd.data);
-		readOPCode(ba2, bd);
-		readOPCode(ba2, bd);
+		var op;
+		do {
+			op = readOPCode(ba2, bd);
+		} while(op >= 0xA0 && op <= 0xA5);
 	} catch(e) {
 		dump('readDefineBinaryData ' + e + '\n');
 	}
 	
-	// Is SWF?
+	// Is SWF? http://s.ytimg.com/yt/swfbin/watch_as3-vflwQAc_A.swf
 	try {
 		var ba2 = new Flashbug.ByteArrayString(bd.data);
 		var signature = ba2.readString(3);
-		if(signature == "CWS") {
+		if (signature == "CWS") {
 			bd.isSWF = true;
 		} else if(signature == "FWS") {
 			bd.isSWF = true;
@@ -2044,7 +3954,16 @@ function readDefineBinaryData(obj, tag, ba) {
 	try {
 		var ba2 = new Flashbug.ByteArrayString(bd.data);
 		var signature = ba2.readString(6);
-		if(signature == "GIF89a") bd.isGIF = true;
+		if (signature == "GIF89a") bd.isGIF = true;
+	} catch(e) {
+		dump('readDefineBinaryData ' + e + '\n');
+	}
+	
+	// Is XML? http://www.hulu.com/site-player/110075/player.swf?cb=110075
+	try {
+		var ba2 = new Flashbug.ByteArrayString(bd.data);
+		var signature = ba2.readString(5);
+		if (signature == "<?xml") bd.isXML = true;
 	} catch(e) {
 		dump('readDefineBinaryData ' + e + '\n');
 	}
@@ -2087,8 +4006,8 @@ function readDefineFont4(obj, tag, ba) {
 	var startPos = ba.position;
 	
 	var font = {};
+	font.type = 'Font';
 	font.id = ba.readUI16();
-	font.type = 'font';
 	font.tag = 'defineFont4';
 	ba.readUB(5); // Reserved
 	font.hasFontData = ba.readUB(1);
@@ -2107,6 +4026,7 @@ function readDefineFont4(obj, tag, ba) {
 			dump('readDefineFont4 ' + e);
 		}
 	}
+	font.name = font.info.name;
 	
 	store(obj, font);
 	
@@ -2149,133 +4069,112 @@ function skipTag(obj, tag, ba) {
 /////////////////////////////////////////////////////////
 
 const TAGS = {};
-TAGS[-1] = {name:'Header', 				func:skipTag };
+TAGS[-1] = {name:'Header', 				func:skipTag }; // Player use
 
 TAGS[0] = {name:'End', 					func:readEnd };
-TAGS[1] = {name:'ShowFrame', 				func:skipTag };
+TAGS[1] = {name:'ShowFrame', 			func:readShowFrame }; // Player use
 TAGS[2] = {name:'DefineShape', 			func:readDefineShape };
-// Undocumented/Unused - Release a character which won't be used in this movie anymore. SWF1
-TAGS[3] = {name:'FreeCharacter', 			func:skipTag };
-TAGS[4] = {name:'PlaceObject', 			func:skipTag };
-TAGS[5] = {name:'RemoveObject', 			func:skipTag };
+TAGS[3] = {name:'FreeCharacter', 			func:skipTag }; // Undocumented - SWF1
+TAGS[4] = {name:'PlaceObject', 			func:readPlaceObject }; // Player use
+TAGS[5] = {name:'RemoveObject', 			func:skipTag }; // Player use
 TAGS[6] = {name:'DefineBits', 			func:readDefineBits };
-TAGS[7] = {name:'DefineButton', 			func:skipTag };
+TAGS[7] = {name:'DefineButton', 			func:skipTag }; // Player use
 TAGS[8] = {name:'JPEGTables', 			func:readJPEGTables };
 TAGS[9] = {name:'SetBackgroundColor', 	func:readSetBackgroundColor };
 
 TAGS[10] = {name:'DefineFont', 			func:readDefineFont };
 TAGS[11] = {name:'DefineText', 			func:readDefineText };
-TAGS[12] = {name:'DoAction', 				func:skipTag };
+TAGS[12] = {name:'DoAction', 			func:readDoAction };
 TAGS[13] = {name:'DefineFontInfo',		func:readDefineFontInfo };
 TAGS[14] = {name:'DefineSound', 		func:readDefineSound };
-TAGS[15] = {name:'StartSound', 			func:skipTag };
-// Undocumented/Unused - Start playing the referenced sound on the next ShowFrame. SWF2
-TAGS[16] = {name:'StopSound', 				func:skipTag };
-TAGS[17] = {name:'DefineButtonSound', 		func:skipTag };
+TAGS[15] = {name:'StartSound', 				func:skipTag }; // Player use
+TAGS[16] = {name:'StopSound', 				func:skipTag }; // Undocumented -  SWF2
+TAGS[17] = {name:'DefineButtonSound', 		func:skipTag }; // Player use
 TAGS[18] = {name:'SoundStreamHead', 	func:readSoundStreamHead };
 TAGS[19] = {name:'SoundStreamBlock', 	func:readSoundStreamBlock };
 
 TAGS[20] = {name:'DefineBitsLossless', func:readDefineBitsLossless };
 TAGS[21] = {name:'DefineBitsJPEG2', 	func:readDefineBitsJPEG2 };
 TAGS[22] = {name:'DefineShape2', 		func:readDefineShape2 };
-TAGS[23] = {name:'DefineButtonCxform', 	func:skipTag };
+TAGS[23] = {name:'DefineButtonCxform', 		func:skipTag }; // Player use
 TAGS[24] = {name:'Protect', 			func:readProtect };
-// Undocumented/Unused - The shape paths are defined as in postscript? SWF3
-TAGS[25] = {name:'PathsArePostscript', 	func:skipTag };
-TAGS[26] = {name:'PlaceObject2', 			func:skipTag };
-TAGS[27] = {name:'UNKNOWN 27', 			func:skipTag };
-TAGS[28] = {name:'RemoveObject2', 			func:skipTag };
-// Undocumented/Unused - Tag used to synchronize the animation with the hardware. SWF3
-TAGS[29] = {name:'SyncFrame', 				func:skipTag };
+TAGS[25] = {name:'PathsArePostscript', 		func:skipTag }; // Undocumented - SWF3
+TAGS[26] = {name:'PlaceObject2', 		func:readPlaceObject2 }; // Player use
+TAGS[27] = {name:'UNKNOWN 27', 				func:skipTag }; // Undocumented
+TAGS[28] = {name:'RemoveObject2', 			func:skipTag }; // Player use
+TAGS[29] = {name:'SyncFrame', 				func:skipTag }; // Undocumented - SWF3
 
-TAGS[30] = {name:'UNKNOWN 30', 			func:skipTag };
-// Undocumented/Unused - Probably an action that would be used to clear everything out. SWF3
-TAGS[31] = {name:'FreeAll', 				func:skipTag };
+TAGS[30] = {name:'UNKNOWN 30', 				func:skipTag }; // Undocumented
+TAGS[31] = {name:'FreeAll', 				func:skipTag }; // Undocumented - SWF3
 TAGS[32] = {name:'DefineShape3', 		func:readDefineShape3 };
 TAGS[33] = {name:'DefineText2', 		func:readDefineText2 };
-TAGS[34] = {name:'DefineButton2', 			func:skipTag };
+TAGS[34] = {name:'DefineButton2', 			func:skipTag }; // Player use
 TAGS[35] = {name:'DefineBitsJPEG3', 	func:readDefineBitsJPEG3 };
 TAGS[36] = {name:'DefineBitsLossless2', func:readDefineBitsLossless2 };
 TAGS[37] = {name:'DefineEditText', 		func:readDefineEditText };
-// Undocumented/Unused - Apparently, Macromedia did have a first attempt in supporting video on their platform. 
-// It looks, however, as if they reconsidered at that point in time. SWF4
-TAGS[38] = {name:'DefineVideo', 			func:skipTag };
+TAGS[38] = {name:'DefineVideo', 			func:skipTag }; // Undocumented - SWF4
 TAGS[39] = {name:'DefineSprite', 		func:readDefineSprite };
 
-// Undocumented/Generator - Define the name of an object (for buttons, bitmaps, sprites and sounds.) SWF3
-TAGS[40] = {name:'NameCharacter', 		func:readNameCharacter };
+TAGS[40] = {name:'NameCharacter', 		func:readNameCharacter }; // Undocumented/Generator - SWF3
 // Undocumented 41 - This tag defines information about the product used to generate the animation. 
 // The product identifier should be unique among all the products. The info includes a product identifier, 
 // a product edition, a major and minor version, a build number and the date of compilation. All of this 
 // information is all about the generator, not the output movie.
 TAGS[41] = {name:'ProductInfo', 		func:readProductInfo };
-// Undocumented/Unused - Another tag that Flash ended up not using. SWF1
-TAGS[42] = {name:'DefineTextFormat', 		func:skipTag };
-TAGS[43] = {name:'FrameLabel', 			func:skipTag };
-// Undocumented
-TAGS[44] = {name:'DefineBehavior', 		func:skipTag };
+TAGS[42] = {name:'DefineTextFormat', 		func:skipTag }; // Undocumented - SWF1
+TAGS[43] = {name:'FrameLabel', 			func:readFrameLabel };
+TAGS[44] = {name:'DefineBehavior', 			func:skipTag }; // Undocumented
 TAGS[45] = {name:'SoundStreamHead2', 	func:readSoundStreamHead2 };
 TAGS[46] = {name:'DefineMorphShape', 	func:readDefineMorphShape };
-// Undocumented/Unused - This may have been something similar to a New in an action script and thus was removed later. SWF3
-TAGS[47] = {name:'GenerateFrame', 			func:skipTag };
+TAGS[47] = {name:'GenerateFrame', 			func:skipTag }; // Undocumented - SWF3
 TAGS[48] = {name:'DefineFont2', 		func:readDefineFont2 };
-// Undocumented/Generator - Gives some information about the tool which generated this SWF file and its version. SWF3
-TAGS[49] = {name:'GeneratorCommand', 	func:readGeneratorCommand };
+TAGS[49] = {name:'GeneratorCommand', 	func:readGeneratorCommand }; // Undocumented/Generator - Gives information about what generated this SWF and its version. SWF3
 
-// Undocumented - SWF5
-TAGS[50] = {name:'DefineCommandObject', 	func:skipTag };
-// Undocumented/Generator - It looks like this would have been some sort of DefineSprite extension... did not make it out either. SWF5
-TAGS[51] = {name:'CharacterSet', 		func:readCharacterSet };
-// Undocumented/Unused - It looks like accessing a system font was going to be another tag, 
-// but instead Macromedia made use of a flag in the existing DefineFont2 tag. SWF5
-TAGS[52] = {name:'ExternalFont', 			func:skipTag };
-// Undocumented
-TAGS[52] = {name:'DefineFunction', 		func:skipTag }; 
-// Undocumented
-TAGS[54] = {name:'PlaceFunction', 			func:skipTag };
-// Undocumented
-TAGS[55] = {name:'GeneratorTagObject', 	func:skipTag };
+TAGS[50] = {name:'DefineCommandObject', 	func:skipTag }; // Undocumented - SWF5
+TAGS[51] = {name:'CharacterSet', 		func:readCharacterSet }; // Undocumented/Generator - SWF5
+TAGS[52] = {name:'ExternalFont', 			func:skipTag }; // Undocumented - SWF5
+TAGS[52] = {name:'DefineFunction', 			func:skipTag }; // Undocumented
+TAGS[54] = {name:'PlaceFunction', 			func:skipTag }; // Undocumented
+TAGS[55] = {name:'GeneratorTagObject', 		func:skipTag }; // Undocumented
 TAGS[56] = {name:'ExportAssets', 		func:readExportAssets };
-TAGS[57] = {name:'ImportAssets', 			func:skipTag };
+TAGS[57] = {name:'ImportAssets', 		func:readImportAssets }; // Deprecated SWF8
 TAGS[58] = {name:'EnableDebugger', 		func:readEnableDebugger };
-TAGS[59] = {name:'DoInitAction', 			func:skipTag };
+TAGS[59] = {name:'DoInitAction', 		func:readDoInitAction };
 
 TAGS[60] = {name:'DefineVideoStream', 	func:readDefineVideoStream };
 TAGS[61] = {name:'VideoFrame', 			func:readVideoFrame };
 TAGS[62] = {name:'DefineFontInfo2', 	func:readDefineFontInfo2 };
-// Undocumented 63 - This tag is used when debugging an SWF movie. 
+// Undocumented - This tag is used when debugging an SWF movie. 
 // It gives information about what debug file to load to match the SWF movie with the source. The identifier is a UUID. SWF6
-TAGS[63] = {name:'DebugID', 				func:skipTag };
+TAGS[63] = {name:'DebugID', 			func:readDebugID }; // Undocumented - SWF6
 TAGS[64] = {name:'EnableDebugger2', 	func:readEnableDebugger2 };
-TAGS[65] = {name:'ScriptLimits', 			func:skipTag };
-TAGS[66] = {name:'SetTabIndex', 			func:skipTag };
-// Undocumented
-TAGS[67] = {name:'DefineShape4_', 			func:skipTag };
-// Undocumented
-TAGS[68] = {name:'DefineMorphShape2_', 	func:skipTag };
+TAGS[65] = {name:'ScriptLimits', 		func:readScriptLimits };
+TAGS[66] = {name:'SetTabIndex', 		func:readSetTabIndex };
+TAGS[67] = {name:'DefineShape4_', 			func:skipTag }; // Undocumented
+TAGS[68] = {name:'DefineMorphShape2_', 		func:skipTag }; // Undocumented
 TAGS[69] = {name:'FileAttributes', 		func:readFileAttributes };
 
-TAGS[70] = {name:'PlaceObject3', 			func:skipTag };
-TAGS[71] = {name:'ImportAssets2', 			func:skipTag };
-TAGS[72] = {name:'DoABC', 					func:skipTag };
-TAGS[73] = {name:'DefineFontAlignZones', 	func:skipTag };
+TAGS[70] = {name:'PlaceObject3', 		func:readPlaceObject3 }; // Player use
+TAGS[71] = {name:'ImportAssets2', 		func:readImportAssets2 };
+TAGS[72] = {name:'DoABCDefine', 			func:skipTag }; // <<<<<<<<<<<<<<<<<<< TODO
+TAGS[73] = {name:'DefineFontAlignZones', 	func:skipTag }; // Player use
 TAGS[74] = {name:'CSMTextSettings', 	func:readCSMTextSettings };
 TAGS[75] = {name:'DefineFont3', 		func:readDefineFont3 };
 TAGS[76] = {name:'SymbolClass', 		func:readSymbolClass };
 TAGS[77] = {name:'Metadata', 			func:readMetadata };
-TAGS[78] = {name:'DefineScalingGrid', 		func:skipTag };
-TAGS[79] = {name:'UNKNOWN 79', 			func:skipTag };
+TAGS[78] = {name:'DefineScalingGrid', 		func:skipTag }; // Player use
+TAGS[79] = {name:'UNKNOWN 79', 				func:skipTag }; // Undocumented
 
-TAGS[80] = {name:'UNKNOWN 80', 			func:skipTag };
-TAGS[81] = {name:'UNKNOWN 81', 			func:skipTag };
-TAGS[82] = {name:'DoABCDefine', 			func:skipTag };
+TAGS[80] = {name:'UNKNOWN 80', 				func:skipTag }; // Undocumented
+TAGS[81] = {name:'UNKNOWN 81', 				func:skipTag }; // Undocumented
+TAGS[82] = {name:'DoABC', 				func:readDoABC }; // <<<<<<<<<<<<<<<<<<< TODO
 TAGS[83] = {name:'DefineShape4', 		func:readDefineShape4 };
 TAGS[84] = {name:'DefineMorphShape2', 	func:readDefineMorphShape2 };
-TAGS[85] = {name:'UNKNOWN 85', 			func:skipTag };
-TAGS[86] = {name:'DefineSceneAndFrameLabelData', func:skipTag };
+TAGS[85] = {name:'UNKNOWN 85', 				func:skipTag }; // Undocumented
+TAGS[86] = {name:'DefineSceneAndFrameLabelData', func:readDefineSceneAndFrameLabelData };
 TAGS[87] = {name:'DefineBinaryData', 	func:readDefineBinaryData };
 TAGS[88] = {name:'DefineFontName', 		func:readDefineFontName };
-TAGS[89] = {name:'StartSound2', 			func:skipTag };
+TAGS[89] = {name:'StartSound2', 			func:skipTag }; // Player use
 
 TAGS[90] = {name:'DefineBitsJPEG4', 	func:readDefineBitsJPEG4 };
 TAGS[91] = {name:'DefineFont4', 		func:readDefineFont4 };
@@ -2334,6 +4233,10 @@ function readHeader(obj, ba) {
 	}
 	
 	obj.frameSize = ba.readRect();
+	obj.frameSize.left /= 20; /* twips */
+	obj.frameSize.right /= 20; /* twips */
+	obj.frameSize.top /= 20; /* twips */
+	obj.frameSize.bottom /= 20; /* twips */
 	obj.frameRate = ba.readUI16() / 256;
 	obj.frameCount = ba.readUI16();
 	
@@ -2344,7 +4247,7 @@ function readTags(obj, ba) {
 	if (typeof obj.tags == "undefined") obj.tags = [];
 	var tag = readTagHeader(obj, ba);
 	while(tag) {
-		//trace2(tag.type, TAGS[tag.type].name);
+		
 		var o = TAGS[tag.type];
 		if (o) {
 			var f = o.func;
@@ -2369,6 +4272,7 @@ function readTags(obj, ba) {
 			f(obj, tag, ba);
 			
 			// Re-align in the event a tag was read improperly
+			if (0 != (tag.contentLength - (ba.position - startPos))) trace2('Error reading ' + TAGS[tag.type].name + ' tag! Start:' + startPos + ' End:' + ba.position + ' BytesAvailable:' + (tag.contentLength - (ba.position - startPos)), tag);
 			ba.seek(tag.contentLength - (ba.position - startPos));
 			
 			// Only add tags we can read to the tags list
@@ -2389,6 +4293,8 @@ onmessage = function(event) {
 	
 	var obj = {};
 	obj.dictionary = [];
+	obj.frames = [];
+	obj.frameIndex = 1;
 	ba = readHeader(obj, ba);
 	if(!ba) {
 		postMessage(obj);

@@ -1,5 +1,9 @@
 /**
  * Write WAV wrapper to raw samples  IMA ADPCM!!!!
+ 
+ WAVE Codec Registry
+ http://www.rfc-editor.org/rfc/rfc2361.txt
+ 
  */
 Flashbug.WAVUtil = function (snd, data) {
 	var soundRate = snd.hasOwnProperty('streamSoundRate') ? snd.streamSoundRate : snd.soundRate,

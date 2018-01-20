@@ -2,27 +2,22 @@
 //pref('extensions.flashbug@coursevector.com.description', 'chrome://flashbug/locale/flashbug.properties');
 
 // Global
+pref('extensions.firebug.flashbug.defaultTab', 'Trace');
+
+// Console
 pref('extensions.firebug.flashbug.autoScroll', false);
 pref('extensions.firebug.flashbug.charSet', 'UTF-8');
 pref('extensions.firebug.flashbug.useGlobalVariables', false);
 pref('extensions.firebug.flashbug.maxLines', 500);
-pref('extensions.firebug.flashbug.maxWarnings', 100);
-pref('extensions.firebug.flashbug.enableErrors', false);
-pref('extensions.firebug.flashbug.enablePolicy', true);
-pref('extensions.firebug.flashbug.enablePolicyAppend', false);
-pref('extensions.firebug.flashbug.defaultTab', 'Trace');
+
+// SOL
 pref('extensions.firebug.flashbug.lastSortedColumn', 'asc');
 
-pref('extensions.firebug.flashbug.traceOutputBuffered', false);
-pref('extensions.firebug.flashbug.aS3Verbose', false);
-pref('extensions.firebug.flashbug.aS3Trace', false);
-pref('extensions.firebug.flashbug.aS3StaticProfile', false);
-pref('extensions.firebug.flashbug.aS3DynamicProfile', false);
-
+// AMF
 pref('extensions.firebug.flashbug.enableAMF', true);
-pref('extensions.firebug.flashbug.enableSWF', true);
-pref('extensions.firebug.flashbug.swfParseLimit', 0);
 
+// SWF
+pref('extensions.firebug.flashbug.enableSWF', true);
 pref('extensions.firebug.flashbug.enableSWFHeaderOnly', false);
 pref('extensions.firebug.flashbug.enableSWFFont', true);
 pref('extensions.firebug.flashbug.enableSWFBinary', true);
@@ -32,26 +27,24 @@ pref('extensions.firebug.flashbug.enableSWFMorph', true);
 pref('extensions.firebug.flashbug.enableSWFImage', true);
 pref('extensions.firebug.flashbug.enableSWFSound', true);
 pref('extensions.firebug.flashbug.enableSWFText', true);
+pref('extensions.firebug.flashbug.swfParseLimit', 0);
 
 // Firebug activable panel support
-pref('extensions.firebug.flashbug.enableSites', false);
-pref('extensions.firebug.sharedObjects.enableSites', false);
+pref('extensions.firebug.flbConsole.enableSites', false);
+pref('extensions.firebug.flbInspector.enableSites', false);
+pref('extensions.firebug.flbSharedObjects.enableSites', false);
+pref('extensions.firebug.flbDecompiler.enableSites', false);
 
 // Firebug tracing support
 pref('extensions.firebug.DBG_FLASH', false);
-
-pref('extensions.firebug.DBG_FLASH_PANEL', false);
-pref('extensions.firebug.DBG_FLASH_MODEL', false);
-
+pref('extensions.firebug.DBG_FLASH_CONSOLE_PANEL', false);
+pref('extensions.firebug.DBG_FLASH_CONSOLE_MODEL', false);
 pref('extensions.firebug.DBG_FLASH_SOL', false);
 pref('extensions.firebug.DBG_FLASH_SOL_PANEL', false);
 pref('extensions.firebug.DBG_FLASH_SOL_MODEL', false);
 pref('extensions.firebug.DBG_FLASH_AMF0', false);
 pref('extensions.firebug.DBG_FLASH_AMF3', false);
-
-pref('extensions.firebug.DBG_FLASH_CACHE', false);
-pref('extensions.firebug.DBG_FLASH_NET', false);
-pref('extensions.firebug.DBG_FLASH_SWF', false);
-
-pref('extensions.firebug.DBG_FLASH_AMF', false);
-
+pref('extensions.firebug.DBG_FLASH_SWF_TAB', false);
+pref('extensions.firebug.DBG_FLASH_AMF_TAB', false);
+pref('extensions.firebug.DBG_FLASH_DECOMPILER', false);
+pref('extensions.firebug.DBG_FLASH_INSPECTOR', false);
