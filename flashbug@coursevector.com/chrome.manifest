@@ -1,0 +1,11 @@
+# content packagename uri/to/files/ [flags]
+content flashbug chrome/content/flashbug/
+
+# locale packagename localename uri/to/files/ [flags]
+locale flashbug en-US chrome/locale/en-US/
+
+# skin packagename skinname uri/to/files/ [flags]
+skin flashbug firebug chrome/skin/firebug/
+
+# overlay chrome://URI-to-be-overlaid chrome://overlay-URI [flags]
+overlay chrome://firebug/content/firebugOverlay.xul chrome://flashbug/content/flashbug.xul

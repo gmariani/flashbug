@@ -1,0 +1,48 @@
+﻿<!ENTITY  flashbug.menu.clear     			"Clear">
+<!ENTITY  flashbug.menu.clearToolTip     	"Clear the console">
+<!ENTITY  flashbug.menu.open     			"Open">
+<!ENTITY  flashbug.menu.openToolTip			"Open Log">
+<!ENTITY  flashbug.menu.pause     			"Pause">
+<!ENTITY  flashbug.menu.pauseToolTip     	"Pause trace output">
+<!ENTITY  flashbug.menu.refresh     		"Refresh">
+<!ENTITY  flashbug.menu.refreshToolTip     	"Reparse Shared Object files">
+<!ENTITY  flashbug.menu.trace     			"Trace Log">
+<!ENTITY  flashbug.menu.traceToolTip    	"Trace Log">
+<!ENTITY  flashbug.menu.policy     			"Policy Log">
+<!ENTITY  flashbug.menu.policyToolTip     	"Policy Log">
+<!ENTITY  flashbug.menu.sharedobject     	"Shared Objects">
+<!ENTITY  flashbug.menu.sharedobjectToolTip	"Local Shared Objects">
+<!ENTITY  flashbug.menu.detecting     		"Detecting...">
+<!ENTITY  flashbug.menu.getdebugger     	"Get Flash Player Debugger">
+	
+<!ENTITY  flashbug.pref.label     					"Flashbug Preferences">
+<!ENTITY  flashbug.pref.traceLabel     				"Trace Log Settings">
+<!ENTITY  flashbug.pref.traceDisplayWarnings    	"Display Warnings">
+<!ENTITY  flashbug.pref.traceDisplayWarningsToolTip "Enables error reporting">
+<!ENTITY  flashbug.pref.traceMaxWarnings     		"Max Warnings">
+<!ENTITY  flashbug.pref.policyLabel     			"Policy Log Settings (Introduced in Flash Player 9,0,115,0)">
+<!ENTITY  flashbug.pref.policyDesc     				"The policy file log shows messages for every event relating to policy files attempts to retrieve them, successes and failures in processing them, the fates of the requests that depend on them.">
+<!ENTITY  flashbug.pref.policyLink     				"Log Message Reference">
+<!ENTITY  flashbug.pref.policyEnableLog     		"Enable Policy File Logging">
+<!ENTITY  flashbug.pref.policyEnableLogToolTip     	"Enables Policy File Logging">
+<!ENTITY  flashbug.pref.policyEnableAppend     		"Enable Log Append">
+<!ENTITY  flashbug.pref.policyEnableAppendToolTip   "Do not clear log at startup">
+<!ENTITY  flashbug.pref.generalLabel     			"General Settings">
+<!ENTITY  flashbug.pref.generalCharEnc     			"Character Encoding">
+<!ENTITY  flashbug.pref.generalMaxLines     		"Max Lines">
+<!ENTITY  flashbug.pref.generalMaxLinesToolTip     	"Maximum entries to be shown in the console, leave 0 to display all">
+	
+<!ENTITY  flashbug.pref.undocLabel     				"Undocumented Trace Log Settings">
+<!ENTITY  flashbug.pref.undocDesc     				"The following settings require Trace Output Buffered to be enabled. **CAUTION** It's very easy to crash the player when these (except for Trace Output Buffered) are enabled.">
+<!ENTITY  flashbug.pref.traceOutputBuffered     	"Trace Output Buffered">
+<!ENTITY  flashbug.pref.traceOutputBufferedToolTip 	"Traces will be buffered and write to disk multiple lines in one access">
+<!ENTITY  flashbug.pref.useGlobalVariables     		"Use Global Variables (Flash Player 10.1 and Windows Only)">
+<!ENTITY  flashbug.pref.useGlobalVariablesToolTip   "Flash Player 10.1 switched from a defined location to using the Global Variables to find the user folder. This caused issues displaying traces for many people.">
+<!ENTITY  flashbug.pref.aS3Verbose     				"AS3 Verbose">
+<!ENTITY  flashbug.pref.aS3VerboseToolTip     		"Traces detailed information about SWF ByteCode structure and Runtime parsing of the bytecode">
+<!ENTITY  flashbug.pref.aS3Trace     				"AS3 Trace">
+<!ENTITY  flashbug.pref.aS3TraceToolTip     		"Trace every single call to any function that is being called in the SWF at runtime">
+<!ENTITY  flashbug.pref.aS3StaticProfile     		"AS3 Static Profile">
+<!ENTITY  flashbug.pref.aS3StaticProfileToolTip    	"Enables Just in Time Compiler (NanoJIT) logs. Displays detailed information on function conversion, bytecode conversion, MIR (machine-dependent intermediate representation) created, memory used and many others. At the end of execution, it also output a summary of all bytecode processed (For each opcode you have the number of occurrence, relatives importance, etc)">
+<!ENTITY  flashbug.pref.aS3DynamicProfile     		"AS3 Dynamic Profile">
+<!ENTITY  flashbug.pref.aS3DynamicProfileToolTip    "Shows dynamic information about the opcodes being called and gives statistic for each. The statistics include count, cycles, (percent)count, (percent)times and CPI">

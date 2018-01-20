@@ -1,0 +1,88 @@
+<?xml version="1.0"?>
+
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<?xml-stylesheet href="chrome://browser/content/bookmarks/bookmarks.css"?>
+
+<!DOCTYPE window [
+<!ENTITY % flashbugDTD SYSTEM "chrome://flashbug/locale/flashbug.dtd">
+%flashbugDTD;
+]>
+
+<dialog id="winMain" 
+		title="&flashbug.pref.label;" 
+		style="min-width:400px;"
+		onload="onSettingsLoad();" 
+		ondialogaccept="onSettingsAccept();" 
+		xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+		xmlns:html="http://www.w3.org/1999/xhtml"
+		xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" 
+		buttons="accept,cancel">
+	
+	<script src="chrome://browser/content/bookmarks/bookmarks.js"/>
+	<script src="chrome://global/content/globalOverlay.js" />
+	<script src="chrome://flashbug/content/lib.js"/>
+	<script src="chrome://flashbug/content/settings.js"/>
+	
+	<vbox flex="1">
+		<!-- Flash Player Settings -->
+		<groupbox>
+			<caption label="&flashbug.pref.traceLabel;"/>
+			<checkbox label="&flashbug.pref.useGlobalVariables;" id="useGlobalVariables" tooltiptext="&flashbug.pref.useGlobalVariablesToolTip;" flex="1" />
+			<hbox>
+				<checkbox label="&flashbug.pref.traceDisplayWarnings;" id="enableErrors" tooltiptext="&flashbug.pref.traceDisplayWarningsToolTip;" flex="1" />
+				<label value="&flashbug.pref.traceMaxWarnings;" control="maxWarnings" />
+				<textbox id="maxWarnings" size="5" flex="1"/>
+			</hbox>
+		</groupbox>
+		
+		<groupbox>
+			<caption label="&flashbug.pref.undocLabel;"/>
+			<vbox flex="1" width="150">
+				<description>&flashbug.pref.undocDesc;</description>
+				<checkbox label="&flashbug.pref.traceOutputBuffered;" id="traceOutputBuffered" size="5" tooltiptext="&flashbug.pref.traceOutputBufferedToolTip;" />
+				<checkbox label="&flashbug.pref.aS3Verbose;" id="aS3Verbose" tooltiptext="&flashbug.pref.aS3VerboseToolTip;" />
+				<checkbox label="&flashbug.pref.aS3Trace;" id="aS3Trace" tooltiptext="&flashbug.pref.aS3TraceToolTip;" />
+				<checkbox label="&flashbug.pref.aS3StaticProfile;" id="aS3StaticProfile" tooltiptext="&flashbug.pref.aS3StaticProfileToolTip;" />
+				<checkbox label="&flashbug.pref.aS3DynamicProfile;" id="aS3DynamicProfile" tooltiptext="&flashbug.pref.aS3DynamicProfileToolTip;" />
+			</vbox>
+		</groupbox>
+		
+		<!-- Policy File Settings -->
+		<groupbox>
+			<caption label="&flashbug.pref.policyLabel;"/>
+			<vbox flex="1" width="150">
+				<description>&flashbug.pref.policyDesc;</description>
+				<label value="&flashbug.pref.policyLink;" class="text-link" href="http://www.adobe.com/devnet/flashplayer/articles/fplayer9_security_07.html" />
+				<checkbox label="&flashbug.pref.policyEnableLog;" id="enablePolicy" tooltiptext="&flashbug.pref.policyEnableLogToolTip;" />
+				<checkbox label="&flashbug.pref.policyEnableAppend;" id="enablePolicyAppend" tooltiptext="&flashbug.pref.policyEnableAppendToolTip;" />
+			</vbox>
+		</groupbox>
+		
+		<!-- Flashbug Settings -->
+		<groupbox>
+			<caption label="&flashbug.pref.generalLabel;"/>
+			<grid>
+				<columns>
+					<column flex="1" />
+					<column flex="1" />
+				</columns>
+				<rows>
+					<row>
+						<label value="&flashbug.pref.generalCharEnc;" control="cbCharset" />
+						<menulist id="cbCharset">
+							<menupopup>
+								<menuitem id="ISO-8859-1" label="ISO-8859-1" value="ISO-8859-1"/>
+								<menuitem id="utf8" label="UTF-8" value="UTF-8"/>
+								<menuitem id="big5" label="Big5" value="BIG5"/>
+							</menupopup>
+						</menulist>
+					</row>
+					<row>
+						<label value="&flashbug.pref.generalMaxLines;" control="maxLines" />
+						<textbox id="maxLines" size="5" flex="1" tooltiptext="&flashbug.pref.generalMaxLinesToolTip;"/>
+					</row>
+				</rows>
+			</grid>
+		</groupbox>
+	</vbox>
+</dialog>
