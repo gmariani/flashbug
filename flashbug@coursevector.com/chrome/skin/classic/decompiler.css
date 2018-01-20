@@ -11,13 +11,13 @@
 	display:inline-block;
 	width: 11px;
 	height: 11px;
-	background-image: url(chrome://firebug/skin/win/twistyOpen.png);
+	background-image: url(chrome://firebug-os/skin/twistyOpen.svg);
     background-repeat: no-repeat;
 	padding-left: 5px;
 }
 
 .flb-dec-twisty.closed {
-	background-image: url(chrome://firebug/skin/win/twistyClosed.png);
+	background-image: url(chrome://firebug-os/skin/twistyClosed.svg);
 }
 
 .flb-dec-clear {
@@ -34,7 +34,7 @@
 .flb-dec-loading {
     width: 16px;
     height: 16px;
-    background: url(chrome://firebug/skin/loading_16.gif) no-repeat;
+    background: url(chrome://firebug/skin/loading.svg) no-repeat;
 	padding-left: 20px;
 	white-space:nowrap;
 }
@@ -227,7 +227,7 @@ ul.flash-dec-tree {
 
 /* Twisty */
 .flash-dec-tree li.hasChildren > .flash-dec-twisty {
-	background-image: url(chrome://firebug/skin/win/twistyClosed.png);
+	background-image: url(chrome://firebug-os/skin/twistyClosed.svg);
 	background-repeat: no-repeat;
 	background-position: 2px 2px;
 	display:inline-block;
@@ -236,12 +236,12 @@ ul.flash-dec-tree {
 	min-height: 12px;
 }
 .flash-dec-tree li.hasChildren.opened > .flash-dec-twisty {
-	background-image: url(chrome://firebug/skin/win/twistyOpen.png);
+	background-image: url(chrome://firebug-os/skin/twistyOpen.svg);
 }
 
 /* Twisty */
 .tree li.hasChildren > .twisty2 {
-	background-image: url(chrome://firebug/skin/win/twistyClosed.png);
+	background-image: url(chrome://firebug-os/skin/twistyClosed.svg);
 	background-repeat: no-repeat;
 	background-position: 2px 2px;
 	display:inline-block;
@@ -250,12 +250,12 @@ ul.flash-dec-tree {
 	min-height: 12px;
 }
 .tree li.hasChildren.opened > .twisty2 {
-	background-image: url(chrome://firebug/skin/win/twistyOpen.png);
+	background-image: url(chrome://firebug-os/skin/twistyOpen.svg);
 }
 
 /* Loading */
 .flb-dec-loading {
-	background-image: url(chrome://firebug/skin/loading_16.gif);
+	background-image: url(chrome://firebug/skin/loading.svg);
 	background-repeat: no-repeat;
 	width:16px;
 	height:16px;
@@ -375,4 +375,4 @@ ul.flash-dec-tree {
 .flash-dec-tree li a.FLVPlaybackCaptioning { background-image: url(chrome://flashbug/skin/inspector/UIComponents/FLVPlaybackCaptioning.gif) }
 
 /* wait */
-.flash-dec-tree li a.wait { background: url(chrome://firebug/skin/loading_16.gif) no-repeat; }
+.flash-dec-tree li a.wait { background: url(chrome://firebug-os/skin/loading_16.gif) no-repeat; }

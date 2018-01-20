@@ -1,0 +1,75 @@
+<?xml version="1.0"?>
+<overlay xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
+    <script type="application/x-javascript" src="chrome://firebug/content/moduleConfig.js"/>
+    <script type="application/x-javascript" src="chrome://flashbug/content/mainOverlay.js"/>
+	
+	<stringbundleset id="stringbundleset">
+        <stringbundle id="strings_flashbug" src="chrome://flashbug/locale/flashbug.properties"/>
+    </stringbundleset>
+	
+	<commandset id="mainCommandSet">
+		<command id="cmd_flbClear" 		oncommand="Flashbug.ConsoleModule.onClear(Firebug.currentContext)"/>
+		<command id="cmd_flbPause" 		oncommand="Flashbug.ConsoleModule.onPause(Firebug.currentContext)"/>
+		<command id="cmd_flbPlay"  		oncommand="Flashbug.ConsoleModule.onPlay(Firebug.currentContext)"/>
+		<command id="cmd_flbOpen"  		oncommand="Flashbug.ConsoleModule.onOpen(Firebug.currentContext)"/>
+		
+		<command id="cmd_flbRefresh" 	oncommand="Flashbug.SharedObjectModule.refresh(Firebug.currentContext)"/>
+		<command id="cmd_flbDelete" 	oncommand="Flashbug.SharedObjectModule.deleteAll(Firebug.currentContext)"/>
+		
+		<!--<command id="cmd_flbInspect" 	oncommand="Flashbug.FlashModule.toggleInspect()"/>-->
+	</commandset>
+
+	<hbox id="fbToolbarInner" insertbefore="fbDetachButton" class="innerToolbar" flex="1" align="center" >
+		
+		<hbox id="fbFlashbugButtons" insertafter="fbNetButtons" collapsed="true">
+			<toolbarseparator class="fbPanelSpecificButtonsSeparator"/>
+			<toolbarbutton id="flbClear" 
+				label="flashbug.menu.clear" 
+				class="toolbar-text-button fbInternational" 
+				tooltiptext="flashbug.menu.clearToolTip" 
+				command="cmd_flbClear"/>
+			<toolbarbutton id="flbOpen" 
+				label="flashbug.menu.open" 
+				class="toolbar-text-button fbInternational" 
+				tooltiptext="flashbug.menu.openToolTip" 
+				command="cmd_flbOpen"/>
+			<hbox id="fbFlashbugButtonsFilter" class="noTabStop">
+				<toolbarseparator/>
+				<toolbarbutton id="flashbugLogFilter-trace" 
+					label="flashbug.menu.trace" 
+					type="radio" 
+					class="toolbar-text-button fbInternational"
+					tooltiptext="flashbug.menu.traceToolTip" 
+					group="flashbugLogFilter" checked="true"
+					oncommand="Flashbug.ConsoleModule.onSelectLog(Firebug.currentContext, 'Trace')"/>
+				<toolbarbutton id="flashbugLogFilter-policy" 
+					label="flashbug.menu.policy" 
+					type="radio" 
+					class="toolbar-text-button fbInternational"
+					tooltiptext="flashbug.menu.policyToolTip" 
+					group="flashbugLogFilter"
+					oncommand="Flashbug.ConsoleModule.onSelectLog(Firebug.currentContext, 'Policy')"/>
+			</hbox>
+		</hbox>
+		
+		<hbox id="fbFlashbugSOButtons" insertafter="fbNetButtons" collapsed="true">
+			<toolbarbutton id="flbRefresh" 
+				label="flashbug.menu.refresh" 
+				class="toolbar-text-button fbInternational" 
+				tooltiptext="flashbug.menu.refreshToolTip" 
+				command="cmd_flbRefresh"/>
+			<toolbarseparator/>
+			<toolbarbutton id="flbDeleteAll" 
+				label="flashbug.menu.delete" 
+				class="toolbar-text-button fbInternational" 
+				tooltiptext="flashbug.menu.deleteToolTip" 
+				command="cmd_flbDelete"/>
+		</hbox>
+		
+		<hbox id="fbFlashbugVersion" insertafter="fbDebuggerButtons" collapsed="true" flex="1" align="right">
+			<description id="flbVersion" class="fbInternational" value="flashbug.menu.detecting" disabled="true" style="padding-top: 4px;"/>
+			<label 	id="fbFlashbugDownload" value="flashbug.menu.getdebugger" 
+					class="text-link fbInternational" href="http://www.adobe.com/support/flashplayer/downloads.html" />
+		</hbox>
+	</hbox>
+</overlay>

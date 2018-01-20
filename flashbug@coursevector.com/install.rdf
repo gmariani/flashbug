@@ -3,7 +3,7 @@
 
 	<Description about="urn:mozilla:install-manifest">
 		<em:id>flashbug@coursevector.com</em:id>
-		<em:version>1.10.0</em:version>
+		<em:version>2.0.0</em:version>
 		<em:type>2</em:type>
 		<em:unpack>true</em:unpack>
 		
@@ -11,8 +11,8 @@
 		<em:targetApplication>
 			<Description>
 				<em:id>{ec8030f7-c20a-464f-9b0e-13a3a9e97384}</em:id>
-				<em:minVersion>9.0</em:minVersion>
-				<em:maxVersion>11.*</em:maxVersion>
+				<em:minVersion>5.0</em:minVersion>
+				<em:maxVersion>34.*</em:maxVersion>
 			</Description>
 		</em:targetApplication>
 		
@@ -23,7 +23,6 @@
 		<em:contributor>Nathan Mische</em:contributor>
 		<em:contributor>Jon Toland</em:contributor>
 		<em:homepageURL>http://blog.coursevector.com/flashbug</em:homepageURL>
-		<em:optionsURL>chrome://flashbug/content/preferences.xul</em:optionsURL>
 		<em:iconURL>chrome://flashbug/skin/icon32.png</em:iconURL>
 		<em:icon64URL>chrome://flashbug/skin/icon64.png</em:icon64URL>
 	</Description>

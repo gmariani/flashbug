@@ -1,7 +1,14 @@
-content flashbug chrome/content/
+#content	packagename		uri/to/files/	[flags]
+content		flashbug		chrome/content/
 
-locale flashbug en-US chrome/locale/en-US/
+#overlay	chrome://URI-to-be-overlaid						chrome://overlay-URI						[flags]
+overlay		chrome://firebug/content/firebugOverlay.xul		chrome://flashbug/content/mainOverlay.xul
 
-skin flashbug classic chrome/skin/classic/
+#locale		packagename		localename	uri/to/files/			[flags]
+locale		flashbug		en-US		chrome/locale/en-US/
 
-overlay chrome://firebug/content/firebugOverlay.xul chrome://flashbug/content/flashbug.xul
+#resource	aliasname		uri/to/files/	[flags]
+resource	flashbug		chrome/
+
+#skin		packagename		skinname		uri/to/files/ [flags]
+skin		flashbug		classic/1.0		chrome/skin/classic/

@@ -16,9 +16,9 @@ pref('extensions.firebug.flashbug.amf.enableAMF', true);
 
 // Firebug activable panel support
 pref('extensions.firebug.flashConsole.enableSites', false);
-pref('extensions.firebug.flashInspector.enableSites', false);
+pref('extensions.firebug.flbInspector.enableSites', false);
 pref('extensions.firebug.flashSharedObjects.enableSites', false);
-pref('extensions.firebug.flashDecompiler.enableSites', false);
+pref('extensions.firebug.flbDecompiler.enableSites', false);
 
 // Firebug tracing support
 pref('extensions.firebug.DBG_FLASH', false);

@@ -1,167 +1,31 @@
-FBL.ns(function() { with (FBL) {
+/* See license.txt for terms of usage */
+
+define([
+    "firebug/lib/object",
+	"firebug/lib/events",
+	"firebug/lib/options",
+	"firebug/lib/locale",
+	"firebug/lib/css",
+	"firebug/lib/trace",
+	"firebug/net/httpLib",
+	"firebug/lib/system"
+],
+function(Obj, Events, Options, Locale, Css, FBTrace, Http, System) {
 	
 // Constants
-const panelName = "flashDecompilerTree";
-const panelTitle = "SWFs";
-const parentPanelName = "flashDecompiler";
-
-var $FL_STR = Flashbug.$FL_STR,
-$FL_STRF = Flashbug.$FL_STRF;
+var panelName = "flashDecompilerTree";
+var panelTitle = "SWFs";
+var parentPanelName = "flashDecompiler";
 
 var trace = function(msg, obj) {
-	msg = "Flashbug - Flash::" + msg;
-	if (FBTrace.DBG_FLASH_DECOMPILER) {
-		if (typeof FBTrace.sysout == "undefined") {
-			Flashbug.alert(msg + " | " + obj);
-		} else {
-			FBTrace.sysout(msg, obj);
-		}
-	}
-}
-	
-Flashbug.DecompileTreeModule = extend(Firebug.Module, {
-	
-	// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
-	// Extends Module
-	
-	dispatchName: panelName,
-	
-	showPanel: function(browser, panel) {
-		var isPanel = panel && panel.name == panelName;
-		if (isPanel) {
-			// Append CSS
-			var doc = panel.document;
-			if ($("flashbugStyles", doc)) {
-				// Don't append the stylesheet twice. 
-			} else {
-				var styleSheet = createStyleSheet(doc, "chrome://flashbug/skin/flashbug.css");
-				styleSheet.setAttribute("id", "flashbugStyles");
-				addStyleSheet(doc, styleSheet);
-			}
-		}
+		if (FBTrace.DBG_FLASH_DECOMPILER) FBTrace.sysout('flashbug; DecompileTreePanel - ' + msg, obj);
 	},
-});
-
-Flashbug.DecompileModule.Tree = domplate(Firebug.Rep, {
-    tag:
-        UL({'class':'flash-dec-tree'},
-			FOR("file", "$swfs",
-				LI({'class':'isSWF hasChildren', _file:'$file'},
-					IMG({"class": "flash-dec-twisty"}),
-					A({href:'#', title:'$file|getURI', 'class':'swf'}, '$file|getName'),
-					UL({'class':'tree'})
-				)
-			)
-		),
-		
-	leafTag:
-		LI({'class':'isSWF hasChildren', _file:'$file'},
-			IMG({"class": "flash-dec-twisty"}),
-			A({href:'#', title:'$file|getURI', 'class':'swf'}, '$file|getName'),
-			UL({'class':'tree'})
-		),
-		
-	getURI: function(file) {
-		if (file.URI) return file.URI.asciiSpec;
-		return file.href;
-	},
-	
-	getName: function(file) {
-		return this.getURI(file).split('/').pop();
-	}
-});
-
-Flashbug.DecompileModule.Loading = domplate(Firebug.Rep, {
-	tag:
-		DIV({"class": "flb-dec-loading"})
-});
-
-Flashbug.DecompileModule.Error = domplate(Firebug.Rep, {
-	tag:
-		LI({'class':'Error'},
-			IMG({"class": "twisty2"}),
-			A({href:'#', title:'$message', 'class':'Error'}, '$message'),
-			UL({'class':'tree'})
-		)
-});
-
-Flashbug.DecompileModule.SubTree = domplate(Firebug.Rep, {
-	tag:
-		LI({'class':'$title.type hasChildren'},
-			IMG({"class": "flash-dec-twisty"}),
-			A({href:'#', title:'$title.name', 'class':'$title.type'}, '$title.name'),
-			UL({'class':'flash-dec-tree'},
-				FOR("item", "$array",
-					TAG('$item|getLeafTag', {item: '$item'})
-				)
-			)
-		),
-		
-	frameTag:
-		LI({'class':'MovieClip hasChildren'},
-			IMG({"class": "flash-dec-twisty"}),
-			A({href:'#', title:'$title.name', 'class':'$title.type'}, '$title.name'),
-			UL({'class':'flash-dec-tree'},
-				FOR("item", "$array",
-					LI({'class':'MovieClip hasChildren'},
-						IMG({"class": "twisty2"}),
-						A({href:'#', title:'$item.name', 'class':'MovieClip action', _repObject:'$item.data'}, '$item.name'),
-						UL({'class':'tree'},
-							FOR("frame", "$item.data.value",
-								LI({'class':'Action hasChildren'},
-									A({href:'#', title:'$frame|getFrameLabel', 'class':'Frame', _repObject:'$frame'}, '$frame|getFrameLabel')
-								)
-							)
-						)
-					)
-				)
-			)
-		),
-		
-	leafTag:
-		LI({'class':'isSWF MovieClip hasChildren', _file:'$item.data.value.data'},
-			IMG({"class": "twisty2"}),
-			A({href:'#', title:'$item.name', 'class':'$item.type swf'}, '$item.name'),
-			UL({'class':'tree'})
-		),
-		
-	nodeTag:
-		LI({},
-			IMG({"class": "twisty2"}),
-			A({href:'#', title:'$item.name', 'class':'$item.type', $isSpecial:'$item|isSpecial', _repObject:'$item.data'}, '$item.name')
-		),
-		
-	isSpecial: function(item) {
-		// defineBitsJPEG4
-		if (item.data.value.tag == 'defineBitsJPEG4') return true;
-		// defineBitsLossless 15-bit RGB image
-		if (item.data.value.tag == 'defineBitsLossless' && item.data.value.format == 4) return true;
-		// soundStreamHead2 Uncompressed, native-endian
-		if (item.data.value.tag == 'soundStreamHead2' && item.data.value.streamSoundCompression == 0) return true;
-		// soundStreamHead2 Speex
-		if (item.data.value.tag == 'soundStreamHead2' && item.data.value.streamSoundCompression == 11) return true;
-		// defineVideoStream Screen Video V2
-		if (item.data.value.tag == 'defineVideoStream' && item.data.value.codecID == 6) return true;
-		// defineVideoStream H.264
-		if (item.data.value.tag == 'defineVideoStream' && item.data.value.codecID == 7) return true;
-		
-		return false;
-	},
-		
-	getLeafTag: function(item) {
-		if (item.data.value.isSWF) return this.leafTag;
-		return this.nodeTag;
-	},
-		
-	getFrameLabel: function(frame) {
-		var lbl = 'Frame ' + frame.frame;
-		if (frame.hasOwnProperty('label')) lbl += ' (' + frame.label + ')';
-		return lbl;
-	}
-});
+	ERROR = function(e) {
+		 if (FBTrace.DBG_FLASH_ERRORS) FBTrace.sysout('flashbug; ERROR ' + e);
+	};
 
 function DecompileTreePanel() { }
-DecompileTreePanel.prototype = extend(Firebug.Panel, {
+DecompileTreePanel.prototype = Obj.extend(Firebug.Panel, {
     
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	// Shared Objects Panel                                                                     //
@@ -177,8 +41,8 @@ DecompileTreePanel.prototype = extend(Firebug.Panel, {
 	order:20,
 	
 	initialize: function(context, doc) {
-		this.onClick = bind(this.onClick, this);
-        this.onMouseDown = bind(this.onMouseDown, this);
+		this.onClick = Obj.bind(this.onClick, this);
+        this.onMouseDown = Obj.bind(this.onMouseDown, this);
 		
 		Firebug.ActivablePanel.initialize.apply(this, arguments);
 	},
@@ -193,28 +57,14 @@ DecompileTreePanel.prototype = extend(Firebug.Panel, {
         this.panelNode.removeEventListener("mousedown", this.onMouseDown, false);
 	},
 	
-	show: function(state) {
-		if (this.context.loaded && !this.location) { // wait for loadedContext to restore the panel
-			// Append CSS
-			var doc = this.panelNode.ownerDocument;
-			if ($("flashbugFlashStyles", doc)) {
-				// Don't append the stylesheet twice. 
-			} else {
-				var styleSheet = createStyleSheet(doc, "chrome://flashbug/skin/inspector.css");
-				styleSheet.setAttribute("id", "flashbugFlashStyles");
-				addStyleSheet(doc, styleSheet);
-			}
-		}
-	},
-	
 	getContextMenuItems: function(style, target, context) {
 		var items = [];
 		if(target.className == "swf ") {
 			var url = target.title;
-			items.push({label: $FL_STR("flashbug.contextMenu.copyLocation"), nol10n: true, command: bindFixed(copyToClipboard, FBL, url) });
-			items.push({label: $FL_STR("flashbug.contextMenu.openTab"), nol10n: true, command: bindFixed(openNewTab, FBL, url) });
+			items.push({label: Locale.$STR("flashbug.contextMenu.copyLocation"), nol10n: true, command: Obj.bindFixed(System.copyToClipboard, System, url) });
+			items.push({label: Locale.$STR("flashbug.contextMenu.openTab"), nol10n: true, command: Obj.bindFixed(Win.openNewTab, Win, url) });
 		} else {
-			items.push({label: $FL_STR("flashbug.contextMenu.copy"), nol10n: true, command: bindFixed(copyToClipboard, FBL, target.textContent) });
+			items.push({label: Locale.$STR("flashbug.contextMenu.copy"), nol10n: true, command: Obj.bindFixed(System.copyToClipboard, System, target.textContent) });
 		}
 
         return items;
@@ -242,29 +92,42 @@ DecompileTreePanel.prototype = extend(Firebug.Panel, {
 	},
 	
 	processData: function(obj) {
+		function getSymbolName(obj, id, label) {
+			var asset = obj.dictionary[id],
+				exportName = (asset && asset.hasOwnProperty('exportName')) ? asset.exportName : null;
+			if (exportName) {
+				exportName = exportName.substring(exportName.lastIndexOf('.') + 1);
+				//exportName = exportName.substring(exportName.lastIndexOf('_') + 1); // Some export names use _ in the name
+				return exportName;
+			} else {
+				return label + ' ' + id;
+			}
+		}
+		
 		var arr = [], arrHeader = [], arrMetadata = [];
-		if (obj.error && obj.error == 'swf') {
-			arrHeader.push({name:$FL_STR('flashbug.netInfoSWF.colError.title'), value:[$FL_STR('flashbug.netInfoSWF.error.SWF')]});
+		if(obj.hasOwnProperty('error') && obj.error == 'swf') {
+			arrHeader.push({name:Locale.$STR('flashbug.netInfoSWF.colError.title'), value:[Locale.$STR('flashbug.netInfoSWF.error.SWF')]});
 			arr.push({name:'Header', value:arrHeader});
 			return arr;
 		}
 		
-		arrHeader.push({name:'Compressed', value:obj.isCompressed});
-		arrHeader.push({name:'SWF Version', value:obj.version});
-		arrHeader.push({name:'File Size', value:obj.fileLength});
-		if(obj.hasOwnProperty('fileLengthCompressed')) arrHeader.push({name:'File Size (Compressed)', value:obj.fileLengthCompressed});
+		arrHeader.push({name:'Compressed', value:(obj.header.signature == "CWS") });
+		arrHeader.push({name:'SWF Version', value:obj.header.version});
+		arrHeader.push({name:'File Size', value:obj.header.fileLength});
+		if(obj.hasOwnProperty('fileLengthCompressed')) arrHeader.push({name:'File Size (Compressed)', value:obj.header.fileLengthCompressed});
 		
-		var f = obj.frameSize;
+		var f = obj.header.frameSize;
 		arrHeader.push({name:'Frame Width', value:(f.right - f.left) / 20});
 		arrHeader.push({name:'Frame Height', value:(f.bottom - f.top) / 20});
-		arrHeader.push({name:'Frame Rate', value:obj.frameRate});
-		arrHeader.push({name:'Frame Count', value:obj.frameCount});
+		arrHeader.push({name:'Frame Rate', value:obj.header.frameRate});
+		arrHeader.push({name:'Frame Count', value:obj.header.frameCount});
 		arr.push({name:'Header', value:arrHeader});
 		
-		if(obj.hasOwnProperty('useDirectBlit')) arrMetadata.push({name:'Use Direct Blit', value:obj.useDirectBlit});
-		if(obj.hasOwnProperty('useGPU')) arrMetadata.push({name:'Use GPU', value:obj.useGPU});
-		if(obj.hasOwnProperty('actionscript3')) arrMetadata.push({name:'AS3', value:obj.actionscript3});
-		if(obj.hasOwnProperty('useNetwork')) arrMetadata.push({name:'Use Network', value:obj.useNetwork});
+		var hasAttr = obj.hasOwnProperty('attributes');
+		if(hasAttr && obj.attributes.hasOwnProperty('useDirectBlit')) arrMetadata.push({name:'Use Direct Blit', value:obj.attributes.useDirectBlit});
+		if(hasAttr && obj.attributes.hasOwnProperty('useGPU')) arrMetadata.push({name:'Use GPU', value:obj.attributes.useGPU});
+		if(hasAttr && obj.attributes.hasOwnProperty('actionscript3')) arrMetadata.push({name:'AS3', value:obj.attributes.actionscript3});
+		if(hasAttr && obj.attributes.hasOwnProperty('useNetwork')) arrMetadata.push({name:'Use Network', value:obj.attributes.useNetwork});
 		
 		if(obj.hasOwnProperty('backgroundColor')) {
 			arrMetadata.push({name:'Background Color', value:obj.backgroundColor});
@@ -272,17 +135,25 @@ DecompileTreePanel.prototype = extend(Firebug.Panel, {
 			arrMetadata.push({name:'Background Color', value:{red:255, green:255, blue:255}});
 		}
 		
-		if(obj.hasOwnProperty('isProtected')) {
-			arrMetadata.push({name:'Protected', value:obj.password || 'true'});
+		if(obj.hasOwnProperty('debugPassword')) {
+			arrMetadata.push({name:'Protected', value:obj.debugPassword || 'true'});
 		} else {
 			arrMetadata.push({name:'Protected', value:'false'});
 		}
 		
-		//if(obj.hasOwnProperty('jpegTables') && obj.jpegTables != '') arrMetadata.push({name:'JPEG Tables', value:obj.jpegTables});
+		if(obj.hasOwnProperty('maxRecursionDepth')) {
+			arrMetadata.push({name:'Max Recursion Depth', value:obj.maxRecursionDepth});
+		}
+		
+		if(obj.hasOwnProperty('scriptTimeoutSeconds')) {
+			arrMetadata.push({name:'Script Timeout Seconds', value:obj.scriptTimeoutSeconds});
+		}
+		
+		//if(obj.hasOwnProperty('jpegData') && obj.jpegData != '') arrMetadata.push({name:'JPEG Tables', value:obj.jpegData});
 		
 		if(obj.hasOwnProperty('productInfo')) {
-			arrMetadata.push({name:'Created With', value: 'Adobe Flex ' + obj.productInfo.sdk});
-			if (obj.productInfo.hasOwnProperty('compileTimeStamp')) arrMetadata.push({name:'Compilation Date', value:obj.productInfo.compileTimeStamp});
+			arrMetadata.push({name:'Created With', value: obj.productInfo.product + ' ' + obj.productInfo.sdk});
+			if (obj.productInfo.hasOwnProperty('compileDate')) arrMetadata.push({name:'Compilation Date', value:obj.productInfo.compileDate});
 		}
 		
 		if(obj.hasOwnProperty('metadata')) {
@@ -302,178 +173,159 @@ DecompileTreePanel.prototype = extend(Firebug.Panel, {
 		}
 		arr.push({name:'Metadata', value:arrMetadata});
 		
-		if(obj.hasOwnProperty('fonts')) {
-			var l = obj.fonts.length;
-			var arrFonts = [];
-			for(var i = 0; i < l; i++) {
-				var font = obj.fonts[i];
-				if (!font.info.copyright) font.info.copyright = '';
-				if (font.info.hasOwnProperty('name')) {
-					// Remove UTF-8 encoding error
-					var lastChar = font.info.name.substring(font.info.name.length - 1);
-					font.info.name = lastChar.charCodeAt(0) == 0 ? font.info.name.substring(0, font.info.name.length - 1) : font.info.name;
+		//---------------------------------------------
+		// Go through dictionary and identify assets
+		var arrSnds = [], arrImgs = [], arrVid = [], arrBin = [],
+		    arrShapes = [], arrShapes2 = [], arrTxt = [], arrFonts = [],
+			l = obj.dictionary.length;
+			
+		// I don't think a timeline can have more than one stream, but let's assume it can
+		for (var j = 0; j < obj.streams.length; j++) {
+			if (obj.streams[j].data.length > 0) arrSnds.push({name:'Sound Stream ' + obj.streams[j].streamID, type:'StreamSound', value:obj.streams[j]});
+		}
+		
+		for (var i = 0; i < l; i++) {
+			var asset = obj.dictionary[i], name = '';
+			
+			// Typically, the first CharacterId is 1, the second CharacterId is 2, and so on. The number zero (0) is special and is considered a null character.
+			if (i == 0 && !asset) continue;
+			
+			if (!asset) {
+				// Possibly a custom generated swf? (i.e. youtube/google) where it has gaps in dictionary
+				// Maybe to break decompilers....
+				continue;
+			}
+			
+			// For linked assets
+			if (!asset.header) continue;
+			
+			switch(asset.header.type) {
+				case 6  /*DefineBits*/ :
+				case 21 /*DefineBitsJPEG2*/ :
+				case 35 /*DefineBitsJPEG3*/ :
+				case 90 /*DefineBitsJPEG4*/ :
+				case 20 /*DefineBitsLossless*/ :
+				case 36 /*DefineBitsLossless2*/ :
+					name = getSymbolName(obj, asset.id, 'Image');
+					arrImgs.push({name:name, type:'Bitmap', value:asset});
+					break;
 					
-					arrFonts.push({name:font.info.name, type:'Font', value:font});
-				}
-			}
-			
-			if (arrFonts.length > 0) arr.push({name:'Fonts (' + arrFonts.length + ')', value:arrFonts});
-		}
-		
-		function getSymbolName(obj, id, label) {
-			var obj = obj.dictionary[id],
-				exportName = obj ? obj.exportName : null;
-			if (exportName) {
-				exportName = exportName.substring(exportName.lastIndexOf('.') + 1);
-				exportName = exportName.substring(exportName.lastIndexOf('_') + 1);
-				return exportName;
-			} else {
-				return label + ' ' + id;
-			}
-		}
-		
-		if(obj.hasOwnProperty('binary')) {
-			var l = obj.binary.length;
-			var arrBin = [];
-			for(var i = 0; i < l; i++) {
-				var bin = obj.binary[i];
-				bin.name = getSymbolName(obj, bin.id, 'Binary');
-				if (bin.isPBJ) bin.name = bin.pbName;
-				var type = 'Binary';
-				if (bin.isPBJ) type = 'PixelBender';
-				if (bin.isXML) type = 'XML';
-				arrBin.push({name:bin.name, type:type, value:bin});
-			}
-			
-			if (arrBin.length > 0) arr.push({name:'Binary (' + arrBin.length + ')', value:arrBin});
-		}
-		
-		if(obj.hasOwnProperty('videos')) {
-			var l = obj.videos.length;
-			var arrVid = [];
-			for(var i = 0; i < l; i++) {
-				var vid = obj.videos[i];
-				vid.name = getSymbolName(obj, vid.id, 'Video');
-				
-				// Could be a placed video object on stage that plays a loaded FLV, skip those
-				if (vid.data.length > 0) arrVid.push({name:vid.name, type:'Video', value:vid});
-			}
-			
-			if (arrVid.length > 0) arr.push({name:'Videos (' + arrVid.length + ')', value:arrVid});
-		}
-		
-		if(obj.hasOwnProperty('shapes')) {
-			var l = obj.shapes.length;
-			var arrShapes = [];
-			for(var i = 0; i < l; i++) {
-				var shp = obj.shapes[i];
-				shp.name = getSymbolName(obj, shp.id, 'Shape');
-				arrShapes.push({name:shp.name, type:'Shape', value:shp});
-			}
-			
-			if (arrShapes.length > 0) arr.push({name:'Shapes (' + arrShapes.length + ')', value:arrShapes});
-		}
-		
-		if(obj.hasOwnProperty('morph_shapes')) {
-			var l = obj.morph_shapes.length;
-			var arrShapes = [];
-			for(var i = 0; i < l; i++) {
-				var shp = obj.morph_shapes[i];
-				shp.name = getSymbolName(obj, shp.id, 'Morph Shape');
-				shp.start.name = shp.name + ' Start';
-				shp.end.name = shp.name + ' End';
-				arrShapes.push({name:shp.name, type:'MorphShape', value:shp});
-			}
-			
-			if (arrShapes.length > 0) arr.push({name:'Morph Shapes (' + arrShapes.length + ')', value:arrShapes});
-		}
-		
-		if(obj.hasOwnProperty('images')) {
-			var l = obj.images.length;
-			var arrImgs = [];
-			for(var i = 0; i < l; i++) {
-				var img = obj.images[i];
-				img.name = getSymbolName(obj, img.id, 'Image');
-				arrImgs.push({name:img.name, type:'Bitmap', value:img});
-			}
-			
-			if (arrImgs.length > 0) arr.push({name:'Images (' + arrImgs.length + ')', value:arrImgs});
-		}
-		
-		if(obj.hasOwnProperty('sounds')) {
-			var l = obj.sounds.length;
-			var arrSnds = [];
-			for(var i = 0; i < l; i++) {
-				var snd = obj.sounds[i];
-				
-				if (snd.hasOwnProperty('streamID')) {
-					if (snd.data.length > 0) arrSnds.push({name:'Sound Stream ' + snd.streamID, type:'StreamSound', value:snd});
-				} else {
-					snd.name = getSymbolName(obj, snd.id, 'Sound');
-					// Buttons sometimes have unused sound streams
-					if (snd.data.length > 0) arrSnds.push({name:snd.name, type:'Sound', value:snd});
-				}
-			}
-			
-			if (arrSnds.length > 0) arr.push({name:'Sounds (' + arrSnds.length + ')', value:arrSnds});
-		}
-		
-		if(obj.hasOwnProperty('text')) {
-			var l = obj.text.length;
-			var arrTxt = [];
-			for(var i = 0; i < l; i++) {
-				var txt = obj.text[i];
-				
-				if (txt.fontID) txt.font = obj.dictionary[txt.fontID];
-				if (!txt.strings) txt.strings = [];
-				if (txt.initialText) txt.strings = [txt.initialText];
-				if (!txt.colors) txt.colors = [];
-				if (txt.textColor) txt.colors = [txt.textColor];
-				if (txt.variableName) {
-					txt.name = txt.variableName;
-				} else {
-					if (txt.initialText) {
-						txt.name = 'Dynamic Text ' + txt.id;
-					} else {
-						txt.name = 'Text ' + txt.id;
+				case 39 /*DefineSprite*/ :
+					// I don't think a sprite can have more than one stream, but let's assume it can
+					for (var j = 0; j < asset.streams.length; j++) {
+						if (asset.streams[j].data.length > 0) arrSnds.push({name:'Sound Stream ' + asset.streams[j].streamID, type:'StreamSound', value:asset.streams[j]});
 					}
-				}
-				
-				// Don't display empty strings
-				//if (txt.strings.length > 0 && txt.strings[0].length > 0) 
-				arrTxt.push({name:txt.name, type:'TextField', value:txt});
+					break;
+				case 18 /*SoundStreamHead*/ :
+					if (asset.data.length > 0) arrSnds.push({name:'Sound Stream ' + asset.streamID, type:'StreamSound', value:asset});
+					break;
+				case 14 /*DefineSound*/ :
+					name = getSymbolName(obj, asset.id, 'Sound');
+					// Buttons sometimes have unused sound streams
+					if (asset.data.length > 0) arrSnds.push({name:name, type:'Sound', value:asset});
+					break;
+					
+				case 60 /*DefineVideoStream*/ :
+					name = getSymbolName(obj, asset.id, 'Video');
+					// Could be a placed video object on stage that plays a loaded FLV, skip those
+					if (asset.data.length > 0) arrVid.push({name:name, type:'Video', value:asset});
+					break;
+					
+				case 87 /*DefineBinaryData*/ :
+					name = getSymbolName(obj, asset.id, 'Binary');
+					if (asset.isPBJ) name = asset.metadata.name;
+					var type = 'Binary';
+					if (asset.isPBJ) type = 'PixelBender';
+					if (asset.isXML) type = 'XML';
+					if (asset.isGIF || asset.isPNG || asset.isJPEG) type = 'BinaryBitmap';
+					arrBin.push({name:name, type:type, value:asset});
+					break;
+					
+				case 46 /*DefineMorphShape*/ :
+				case 84 /*DefineMorphShape2*/ :
+					name = getSymbolName(obj, asset.id, 'Morph Shape');
+					asset.startEdges.name = name + ' Start';
+					asset.endEdges.name = name + ' End';
+					arrShapes.push({name:name, type:'MorphShape', value:asset});
+					break;
+					
+				case 2 /*DefineShape*/ :
+				case 22 /*DefineShape2*/ :
+				case 32 /*DefineShape3*/ :
+				case 83 /*DefineShape4*/ :
+					name = getSymbolName(obj, asset.id, 'Shape');
+					arrShapes.push({name:name, type:'Shape', value:asset});
+					break;
+					
+				case 11 /*DefineText*/ :
+				case 33 /*DefineText2*/ :
+				case 37 /*DefineEditText*/ :
+					if (asset.fontID) asset.font = obj.dictionary[asset.fontID];
+					if (!asset.textRecords) asset.textRecords = [];
+					if (asset.initialText) asset.textRecords = [asset.initialText];
+					if (!asset.colors) asset.colors = [];
+					if (asset.textColor) asset.colors = [asset.textColor];
+					if (asset.variableName) {
+						name = asset.variableName;
+					} else {
+						if (asset.initialText) {
+							name = 'Dynamic Text ' + asset.id;
+						} else {
+							name = 'Text ' + asset.id;
+						}
+					}
+					
+					// Don't display empty strings
+					//if (txt.strings.length > 0 && txt.strings[0].length > 0) 
+					arrTxt.push({name:name, type:'TextField', value:asset});
+					break;
+					
+				case 10 /*DefineFont*/ :
+				case 48 /*DefineFont2*/ :
+				case 75 /*DefineFont3*/ :
+				case 91 /*DefineFont4*/ :
+					name = asset.hasOwnProperty('fontName') ? asset.fontName.fontName : asset.info.name;
+					
+					// Style
+					var caption = [];
+					if (asset.info.fontFlagsItalic) caption.push('Italic');
+					if (asset.info.fontFlagsBold) caption.push('Bold');
+					if (caption.length == 0) caption.push('Regular');
+					var style = caption.join(', ');
+					name += ' (' + style + ')';
+					
+					if (name) arrFonts.push({name:name, type:'Font', value:asset});
+					break;
 			}
-			
-			if (arrTxt.length > 0) arr.push({name:'Text (' + arrTxt.length + ')', value:arrTxt});
 		}
 		
-		/*var arrActions = [];
+		if (arrSnds.length > 0) arr.push({name:'Sounds (' + arrSnds.length + ')', value:arrSnds});
+		if (arrImgs.length > 0) arr.push({name:'Images (' + arrImgs.length + ')', value:arrImgs});
+		if (arrVid.length > 0) arr.push({name:'Videos (' + arrVid.length + ')', value:arrVid});
+		if (arrBin.length > 0) arr.push({name:'Binary (' + arrBin.length + ')', value:arrBin});
+		if (arrShapes.length > 0) arr.push({name:'Shapes (' + arrShapes.length + ')', value:arrShapes});
+		if (arrShapes2.length > 0) arr.push({name:'Morph Shapes (' + arrShapes2.length + ')', value:arrShapes2});
+		if (arrTxt.length > 0) arr.push({name:'Text (' + arrTxt.length + ')', value:arrTxt});
+		if (arrFonts.length > 0) arr.push({name:'Fonts (' + arrFonts.length + ')', value:arrFonts});
+		//---------------------------------------------
+
+		var arrActions = [], arrButtons = [];
 		
 		// Timeline
-		if(obj.hasOwnProperty('frames')) {
+		if(obj.hasOwnProperty('stage')) {
 			var arrFrames = [];
-			for(var i = 0; i <= obj.frameCount; i++) {
-				var frame = obj.frames[i];
+			for(var i = 0; i <= obj.stage.length; i++) {
+				var frame = obj.stage[i];
 				if (frame) {
-					if (frame instanceof Array) {
-						var as = [], actions = [];
-						for (var i3 = 0; i3 < frame.length; i3++) {
-							actions = actions.concat(frame[i3].actions);
-							as.push('', '\\\\ Action segment ' + (i3 + 1));
-							as = as.concat(frame[i3].actionscript);
-						}
-						var o = {type:'ActionScript', frame:frame[0].frame, actions:actions, actionscript:as};
-						if (frame[0].label) o.label = label;
-						arrFrames.push(o);
-					} else {
-						var as = [], actions = [];
-						if (frame.actions) {
-							actions = actions.concat(frame.actions);
-							as.push('', '\\\\ Action Segment 1');
-							as = as.concat(frame.actionscript);
-						}
-						
-						var o = {type:'ActionScript', frame:frame.frame, actions:actions, actionscript:as};
+					var as = [], actions = [];
+					for (var i3 = 0; i3 < frame.actions.length; i3++) {
+						actions = actions.concat(frame.actions[i3].actions);
+						if (frame.actions.length > 1) as.push('', '\\\\ Action segment ' + (i3 + 1));
+						as = as.concat(frame.actions[i3].actionscript);
+					}
+					
+					if (as.length) {
+						var o = {type:'ActionScript', frame:(i + 1), actions:actions, actionscript:as};
 						if (frame.label) o.label = frame.label;
 						arrFrames.push(o);
 					}
@@ -483,50 +335,35 @@ DecompileTreePanel.prototype = extend(Firebug.Panel, {
 			if (arrFrames.length > 0) arrActions.push({name:'Main Timeline', type:'Actions', value:arrFrames});
 		}
 		
-		// Exported Sprites
 		if(obj.hasOwnProperty('dictionary')) {
 			var l = obj.dictionary.length;
 			for(var i = 0; i < l; i++) {
 				var asset = obj.dictionary[i];
-				if (asset && asset.type == 'Sprite' && asset.frameCount > 0) {
-					var l2 = asset.frameCount;
+				
+				// Exported Sprites
+				if (asset && asset.header && asset.header.name == 'DefineSprite' && asset.stage.length > 0) {
+					var l2 = asset.stage.length;
 					var arrFrames = [];
 					for(var i2 = 0; i2 <= l2; i2++) {
-						var frame = asset.frames[i2];
+						var frame = asset.stage[i2];
 						if (frame) {
-							if (frame instanceof Array) {
-								var as = [], actions = [];
-								for (var i3 = 0; i3 < frame.length; i3++) {
-									if (i3 == 0 && asset.hasOwnProperty('initAction')) {
-										actions = actions.concat(asset.initAction.actions);
-										as.push('\\\\ Initial Action Segment ' + (i3 + 1));
-										as = as.concat(asset.initAction.actionscript);
-									}
-									
-									if (frame[i3].actions) {
-										actions = actions.concat(frame[i3].actions);
-										as.push('', '\\\\ Action Segment ' + (i3 + 1));
-										as = as.concat(frame[i3].actionscript);
-									}
-								}
-								var o = {type:'ActionScript', frame:frame[0].frame, actions:actions, actionscript:as};
-								if (frame[0].label) o.label = frame[0].label;
-								arrFrames.push(o);
-							} else {
-								var as = [], actions = [];
-								if (i2 == 1 && asset.hasOwnProperty('initAction')) {
+							var as = [], actions = [];
+							for (var i3 = 0; i3 < frame.actions.length; i3++) {
+								if (i3 == 0 && asset.hasOwnProperty('initAction')) {
 									actions = actions.concat(asset.initAction.actions);
-									as.push('\\\\ Initial Action Segment 1');
+									as.push('\\\\ Initial Action Segment ' + (i3 + 1));
 									as = as.concat(asset.initAction.actionscript);
 								}
 								
-								if (frame.actions) {
-									actions = actions.concat(frame.actions);
-									as.push('', '\\\\ Action Segment 1');
-									as = as.concat(frame.actionscript);
+								if (frame.actions[i3].actions) {
+									actions = actions.concat(frame.actions[i3].actions);
+									if (frame.actions.length > 1) as.push('', '\\\\ Action Segment ' + (i3 + 1));
+									as = as.concat(frame.actions[i3].actionscript);
 								}
-								
-								var o = {type:'ActionScript', frame:frame.frame, actions:actions, actionscript:as};
+							}
+							
+							if (as.length) {
+								var o = {type:'ActionScript', frame:(i2+1), actions:actions, actionscript:as};
 								if (frame.label) o.label = frame.label;
 								arrFrames.push(o);
 							}
@@ -545,16 +382,41 @@ DecompileTreePanel.prototype = extend(Firebug.Panel, {
 					
 					if (arrFrames.length > 0) arrActions.push({name:'Sprite ' + asset.id + (asset.exportName ? ' (' + asset.exportName + ')' : ''), type:'Actions', value:arrFrames});
 				}
+				
+				// Buttons
+				if (asset && asset.header && asset.header.name == 'DefineButton2' && asset.actions.length > 0) {
+					var l2 = asset.actions.length, arrFrames = [], as = [], actions = [];
+					for(var i2 = 0; i2 < l2; i2++) {
+						var frame = asset.actions[i2];
+						if (frame) {
+							actions = actions.concat(frame.actions);
+							as = as.concat(frame.actionscript);
+						}
+					}
+					var o = {type:'ActionScript', frame:1, actions:actions, actionscript:as};
+					arrFrames.push(o);
+					if (arrFrames.length > 0) arrButtons.push({name:'Button ' + asset.id + (asset.exportName ? ' (' + asset.exportName + ')' : ''), type:'Actions', value:arrFrames});
+				}
 			}
 		}
 		
-		if (arrActions.length > 0) arr.push({name:'Actions (' + arrActions.length + ')', value:arrActions});*/
+		if (arrActions.length > 0) arr.push({name:'Actions (' + arrActions.length + ')', value:arrActions});
+		if (arrButtons.length > 0) arr.push({name:'Buttons (' + arrButtons.length + ')', value:arrButtons});
+		
+		// Sort results alphabetically
+		arr.sort(function(a, b){
+			var nameA = a.name.toLowerCase(), nameB = b.name.toLowerCase();
+			//sort string ascending
+			if (nameA < nameB) return -1;
+			if (nameA > nameB) return 1;
+			return 0 //default return value (no sorting)
+		});
 		
 		return arr;
 	},
 	
 	onClick: function(event) {
-		if (!isLeftClick(event)) return;
+		if (!Events.isLeftClick(event)) return;
 		
         if (event.detail == 2) {
             // The double-click (detail == 2) expands an HTML element, but the user must click
@@ -564,17 +426,17 @@ DecompileTreePanel.prototype = extend(Firebug.Panel, {
             // - double click on the element name expands/collapses it
             // - click on the element name selects it
 			var target = event.target;
-            if (!hasClass(target, "flash-dec-twisty") && target.localName == 'a') {
-				 toggleClass(target.parentNode, 'opened');
+            if (!Css.hasClass(target, "flash-dec-twisty") && target.localName == 'a') {
+				 Css.toggleClass(target.parentNode, 'opened');
 			}
         }
     },
 
     onMouseDown: function(event) {
-        if (!isLeftClick(event)) return;
+        if (!Events.isLeftClick(event)) return;
 		
 		var target = event.target;
-		if (hasClass(target.parentNode, 'isSWF')) {
+		if (Css.hasClass(target.parentNode, 'isSWF') && target.parentNode.loaded) {
 			var loading = target.parentNode.querySelector("div.flb-dec-loading");
 			if (target.parentNode.swf || loading) {
 				// continue;
@@ -584,15 +446,19 @@ DecompileTreePanel.prototype = extend(Firebug.Panel, {
 				
 				var t = this;
 				try {
-					var worker = new Worker('chrome://flashbug/content/lib/SWFWorker.js');
+					var worker = new Worker('chrome://flashbug/content/swf/SWFWorker.js');
 					worker.onmessage = function(event) {
-						if (event.data && event.data.type && event.data.type == 'debug') {
-							if (event.data.data) {
-								trace('Worker trace - ' + event.data.title, event.data.data);
-							} else {
-								var arr = event.data.message,
-								title = arr.shift();
-								trace('Worker trace - ' + title, arr);
+						if (event.data && event.data.hasOwnProperty('type')) {
+							if (event.data.type == 'debug') {
+								if (event.data.data) {
+									trace('Worker trace - ' + event.data.title, event.data.data);
+								} else {
+									var arr = event.data.message,
+									title = arr.shift();
+									trace('Worker trace - ' + title, arr);
+								}
+							} else if (event.data.type == 'progress') {
+								t.displayProgress(target, event.data.percent);
 							}
 						} else {
 							trace('Worker message data', event.data);
@@ -611,23 +477,24 @@ DecompileTreePanel.prototype = extend(Firebug.Panel, {
 					
 					// Returns raw bytes without UTF conversion done by Firebug
 					if(target.parentNode.file && !(target.parentNode.file.URI || target.parentNode.file.href)) {
+						trace('!!!!!!!!!!!!!!!!!!! embedded binary may not work');
 						// Embedded binary swf
 						var responseText = target.parentNode.file;
 					} else {
 						// Actual page swf
-						var responseText = getResource(Flashbug.DecompileModule.Tree.getURI(target.parentNode.file));
+						var responseText = Http.getResource(target.parentNode.fileURI, "UTF-8");
 					}
 					
 					var config = {};
-					config.headerOnly = Firebug.getPref(Firebug.prefDomain, 'flashbug.enableSWFHeaderOnly');
-					config.font = config.headerOnly ? false : Firebug.getPref(Firebug.prefDomain, 'flashbug.enableSWFFont');
-					config.binary = config.headerOnly ? false : Firebug.getPref(Firebug.prefDomain, 'flashbug.enableSWFBinary');
-					config.video = config.headerOnly ? false : Firebug.getPref(Firebug.prefDomain, 'flashbug.enableSWFVideo');
-					config.shape = config.headerOnly ? false : Firebug.getPref(Firebug.prefDomain, 'flashbug.enableSWFShape');
-					config.morph = config.headerOnly ? false : Firebug.getPref(Firebug.prefDomain, 'flashbug.enableSWFMorph');
-					config.image = config.headerOnly ? false : Firebug.getPref(Firebug.prefDomain, 'flashbug.enableSWFImage');
-					config.sound = config.headerOnly ? false : Firebug.getPref(Firebug.prefDomain, 'flashbug.enableSWFSound');
-					config.text = config.headerOnly ? false : Firebug.getPref(Firebug.prefDomain, 'flashbug.enableSWFText');
+					config.headerOnly = Options.get('flashbug.enableSWFHeaderOnly');
+					config.font = config.headerOnly ? false : Options.get('flashbug.enableSWFFont');
+					config.binary = config.headerOnly ? false : Options.get('flashbug.enableSWFBinary');
+					config.video = config.headerOnly ? false : Options.get('flashbug.enableSWFVideo');
+					config.shape = config.headerOnly ? false : Options.get('flashbug.enableSWFShape');
+					config.morph = config.headerOnly ? false : Options.get('flashbug.enableSWFMorph');
+					config.image = config.headerOnly ? false : Options.get('flashbug.enableSWFImage');
+					config.sound = config.headerOnly ? false : Options.get('flashbug.enableSWFSound');
+					config.text = config.headerOnly ? false : Options.get('flashbug.enableSWFText');
 					
 					worker.postMessage({text:responseText, config:config});
 				} catch (e) {
@@ -638,29 +505,51 @@ DecompileTreePanel.prototype = extend(Firebug.Panel, {
 			}
 		}
 		
-		this.clickHandler(target);
+		if (target.parentNode.loaded) this.clickHandler(target);
     },
+	
+	setAClass: function(node, className, swfTitle) {
+		if (swfTitle == undefined) swfTitle = false;
+		function isSWFTitle(node) {
+			if (node.localName == 'a' && node.parentNode.getAttribute('rel')) return true;
+			return false;
+		};
+		
+		var nodeList = node.ownerDocument.getElementsByClassName(className),
+			i = nodeList.length;
+		while(i--) {
+			if (isSWFTitle(nodeList[i]) == swfTitle) Css.removeClass(nodeList[i], className);
+		}
+		if (isSWFTitle(node) == swfTitle) Css.setClass(node, className);
+	},
 	
 	clickHandler:function(target) {
 		
-		if (target.localName == 'a' && !hasClass(target, 'action')) {
+		if (target.localName == 'a' && !Css.hasClass(target, 'action')) {
 			var isSWFTitle = false;
 			if (target.parentNode.getAttribute('rel')) isSWFTitle = true;
-			Flashbug.FlashModule.setAClass(target, 'selected', isSWFTitle);
+			this.setAClass(target, 'selected', isSWFTitle);
 			// selectobject
+			
+			if (!target.repObject) {
+				//trace('Item Data not found', target); // there was an error once where it couldn't find repObject
+				ERROR('Item Data not found', target); // there was an error once where it couldn't find repObject
+				return;
+			}
+			
 			trace('Item Data', target.repObject);
 			Flashbug.DecompileModule.showDetails(target.repObject);
 		}
 		
-		if (hasClass(target, "flash-dec-twisty") || hasClass(target, "twisty2")) {
+		if (Css.hasClass(target, "flash-dec-twisty") || Css.hasClass(target, "twisty2")) {
 			// getleaftree
-			toggleClass(target.parentNode, 'opened');
+			Css.toggleClass(target.parentNode, 'opened');
 		}
 	},
 	
 	displayError: function(target, error) {
 		// Remove Loader
-		var loader = target.parentNode.getElementsByTagName('div')[0];
+		var loader = target.parentNode.getElementsByClassName('flb-dec-loading')[0];
 		target.parentNode.removeChild(loader);
 		
 		var o = {message:'Error: ' + error.message + ' (' + error.filename + '@' + (error.lineno || error.lineNumber) + ')'};
@@ -669,17 +558,22 @@ DecompileTreePanel.prototype = extend(Firebug.Panel, {
 		this.clickHandler(target);
 	},
 	
+	displayProgress: function(target, percent) {
+		// Remove Loader
+		var loader = target.parentNode.getElementsByClassName('flb-dec-loading')[0];
+		loader.innerHTML = percent;
+	},
+	
 	displayData: function(target) {
 		var swf = target.parentNode.swf;
 		
 		// Remove Loader
-		var loader = target.parentNode.getElementsByTagName('div')[0];
+		var loader = target.parentNode.getElementsByClassName('flb-dec-loading')[0];
 		target.parentNode.removeChild(loader);
 		
 		var aNode = target.parentNode.getElementsByTagName('a')[0],
 			arr = [];
 		aNode.repObject = arr;
-		
 		
 		for(var key in swf) {
 			var obj = swf[key],
@@ -698,6 +592,8 @@ DecompileTreePanel.prototype = extend(Firebug.Panel, {
 			
 			if (obj.name.indexOf('Actions') == 0) {
 				Flashbug.DecompileModule.SubTree.frameTag.append(o, target.parentNode.lastChild, Flashbug.DecompileModule.SubTree);
+			} else if (obj.name.indexOf('Button') == 0) {
+				Flashbug.DecompileModule.SubTree.buttonTag.append(o, target.parentNode.lastChild, Flashbug.DecompileModule.SubTree);
 			} else {
 				Flashbug.DecompileModule.SubTree.tag.append(o, target.parentNode.lastChild, Flashbug.DecompileModule.SubTree);
 			}
@@ -707,10 +603,12 @@ DecompileTreePanel.prototype = extend(Firebug.Panel, {
 	}
 });
 
-//////////////////////////
-// Firebug Registration //
-//////////////////////////
-Firebug.registerModule(Flashbug.DecompileTreeModule);
+// ********************************************************************************************* //
+// Registration
+
 Firebug.registerPanel(DecompileTreePanel);
 
-}});
+return DecompileTreePanel;
+
+// ********************************************************************************************* //
+});

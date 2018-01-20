@@ -12,10 +12,9 @@ http://blog.theroyweb.com/extracting-wav-file-header-information-using-a-python-
 // TODO: Inspector Panel - memory profiler
 // TODO: ByteArrayString.readString - If Flash 5- read ANSI or shift-JIS
 
-1.10.0 -
-Brainball cheating
-Adds panels after Cookies panel
-Allows AMF export even on fail
+1.8.4 -
+Supports Firefox 9, 10, 11
+Supports Firebug 1.9
 
 1.8.3 -
 Supports Firefox 8,9
@@ -35,6 +34,10 @@ Decompile Panel - Fixed MATRIX parsing
 Decompile Panel - Shapes now display image fills
 Decompile Panel - Fixed DefineMorphShape2 parsing
 Decompile Panel - Fixed DefineFont2 parsing
+Decompile Panel - Fixed ActionRecord parsing
+Decompile Panel - Added DoABC tag parsing
+Decompile Panel - Stylized ActionScript
+Decompile Panel - ActionScript correctly handles frame indexes, labels, exported assets
 
 1.8.0 -
 Supports Firefox 4,5,6
