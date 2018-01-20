@@ -4,9 +4,9 @@ var $FL_STR = Flashbug.$FL_STR,
 $FL_STRF = Flashbug.$FL_STRF;
 
 // Constants
-const panelName = 'flbInspectorAPI';
+const panelName = 'flashInspectorAPI';
 const panelTitle = $FL_STR('flashbug.inspPanel.details.title');
-const parentPanelName = 'flbInspector';
+const parentPanelName = 'flashInspector';
 
 var Ci = Components.interfaces;
 var Cc = Components.classes;

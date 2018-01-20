@@ -639,7 +639,7 @@
 		get mmDirectory() {
 			var file = undefined,
 				dir = CCIN('@mozilla.org/file/directory_service;1', 'nsIProperties'),
-				useGlobalVariables = _prefSvc.getBoolPref('extensions.firebug.flashbug.useGlobalVariables');
+				useGlobalVariables = _prefSvc.getBoolPref('extensions.firebug.flashbug.console.useGlobalVariables');
 			if(!_mmDirPath) {
 				switch(this.OS) {
 					case 'win' :
@@ -674,12 +674,8 @@
 						// For previous versions of Flash Player, Flash Player ignored an mm.cfg file in your home directory /Users/<user>. 
 						// For some users with an mm.cfg in their home directory, tracing to the flashlog.txt file will not work.
 						
-						// LocDsk : /Library/Desktop
 						// /Library/Application Support/Macromedia
-						//file = dir.get('LocDsk', Ci.nsILocalFile).parent;
-						file = dir.get('Home', Ci.nsILocalFile).parent.parent; // Get root of drive hopefully
-						file.append('Library');
-						if(!file.exists() || !file.isDirectory()) file.create(Ci.nsILocalFile.DIRECTORY_TYPE, 0777);
+						file = dir.get('LocDsk', Ci.nsILocalFile).parent;
 						file.append('Application Support');
 						if(!file.exists() || !file.isDirectory()) file.create(Ci.nsILocalFile.DIRECTORY_TYPE, 0777);
 						file.append('Macromedia');
@@ -775,10 +771,10 @@
 			
 			try {
 				// Set preloadSWF based on Flash Panel being enabled
-				//var path = 'D:\\SVN\\projects\\firefox\\flashbug\\profiler\\profiler.swf';
+				var path = 'D:\\Web Development\\Personal\\Firefox\\Flashbug\\profiler\\profiler.swf';
 				//var path = 'C:\\Users\\Gabriel\\Documents\\SVN\\Coursevector\\projects\\firefox\\flashbug\\profiler\\profiler.swf';
-				var path = this.profilerPath;
-				if (_prefSvc.getBoolPref('extensions.firebug.flbInspector.enableSites') == true) {
+				//var path = this.profilerPath;
+				if (_prefSvc.getBoolPref('extensions.firebug.flashInspector.enableSites') == true) {
 					mm['PreloadSwf'] = path;
 				} else {
 					// Only mess with this if it's the built in path, not custom

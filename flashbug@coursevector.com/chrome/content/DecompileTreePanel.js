@@ -1,9 +1,9 @@
 FBL.ns(function() { with (FBL) {
 	
 // Constants
-const panelName = "flbDecompilerTree";
+const panelName = "flashDecompilerTree";
 const panelTitle = "SWFs";
-const parentPanelName = "flbDecompiler";
+const parentPanelName = "flashDecompiler";
 
 var $FL_STR = Flashbug.$FL_STR,
 $FL_STRF = Flashbug.$FL_STRF;

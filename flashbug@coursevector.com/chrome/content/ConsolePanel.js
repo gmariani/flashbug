@@ -4,7 +4,10 @@
 FBL.ns(function() { with (FBL) {
 
 // Constants
-const panelName = "flbConsole";
+var Ci = Components.interfaces;
+var Cc = Components.classes;
+var Cu = Components.utils;
+const panelName = "flashConsole";
 const arrPattern = [
 	{ label:"xml", 				pattern:new RegExp("^(@@XML@@|@@HTML@@)[^<]*")},
 	{ label:"error", 			pattern:new RegExp("^(@@ERROR@@)\s*")},
@@ -28,9 +31,12 @@ const regexXMLStart = /^<(?!XML)([a-z][\w0-9-]*)>/i;
 const regexXMLEnd = /<\/(?!XML)([a-z][\w0-9-]*)>$/i;
 const regexXML = /^<(?!XML)([a-z][\w0-9-]*)>.*<\/(?!XML)([a-z][\w0-9-]*)>$/i;
 
-var Ci = Components.interfaces;
-var Cc = Components.classes;
-var Cu = Components.utils;
+var trace = function(msg, obj) {
+		if (FBTrace.DBG_FLASH_CONSOLE) FBTrace.sysout('flashbug; Console - ' + msg, obj);
+	},
+	ERROR = function(e) {
+		 if (FBTrace.DBG_FLASH_ERRORS) FBTrace.sysout('flashbug; ERROR ' + e);
+	};
 
 // Localization
 //-----------------------------------------------------------------------------
@@ -51,28 +57,17 @@ Flashbug.ConsoleModule = extend(Firebug.ActivableModule, {
 	// Flash Console Module                                                                     //
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	
-	trace: function(msg, obj) {
-		msg = "Flashbug - Model::" + msg;
-		if (FBTrace.DBG_FLASH_CONSOLE_MODEL) {
-			if (typeof FBTrace.sysout == "undefined") {
-				Flashbug.alert(msg + " | " + obj);
-			} else {
-				FBTrace.sysout(msg, obj);
-			}
-		}
-	},
-	
 	/////////////////////////////
 	// Firebug Module Override //
 	/////////////////////////////
 	
 	// Called when the window is opened.
 	initialize: function() {
-		this.trace("initialize");
+		trace("initialize");
 		
 		// Moved SharedObject to seperate Panel, if SharedObject was a selected Tab change it to Trace
-		if(Firebug.getPref(Firebug.prefDomain, "flashbug.defaultTab").toLowerCase() == "cookie") {
-			Firebug.setPref(Firebug.prefDomain, "flashbug.defaultTab", "trace");
+		if(Firebug.getPref(Firebug.prefDomain, "flashbug.console.defaultTab").toLowerCase() == "cookie") {
+			Firebug.setPref(Firebug.prefDomain, "flashbug.console.defaultTab", "trace");
 		}
 		//
 		
@@ -80,7 +75,7 @@ Flashbug.ConsoleModule = extend(Firebug.ActivableModule, {
 	},
 	
 	internationalizeUI: function(doc) {
-		this.trace("internationalizeUI");
+		trace("internationalizeUI");
         var elements = ["flbClear", "flbOpen", "flashbugLogFilter-trace", "flashbugLogFilter-policy",  "fbFlashbugVersion", "fbFlashbugDownload", "flbVersion"];
         var attributes = ["label", "tooltiptext", "value"];
 		
@@ -96,7 +91,7 @@ Flashbug.ConsoleModule = extend(Firebug.ActivableModule, {
     },
 	
     showPanel: function(browser, panel) {
-		this.trace("showPanel " + panelName, panel);
+		trace("showPanel " + panelName, panel);
 		
         var isFlashPanel = panel && panel.name == panelName;
         collapse(Firebug.chrome.$("fbFlashbugButtons"), !isFlashPanel);
@@ -119,7 +114,7 @@ Flashbug.ConsoleModule = extend(Firebug.ActivableModule, {
 			this.panel = panel;
 			
 			// Select Log to help init panel
-			this.onSelectLog(null, Firebug.getPref(Firebug.prefDomain, "flashbug.defaultTab"), panel);
+			this.onSelectLog(null, Firebug.getPref(Firebug.prefDomain, "flashbug.console.defaultTab"), panel);
 			this.displayValues();
 		}
     },
@@ -139,7 +134,7 @@ Flashbug.ConsoleModule = extend(Firebug.ActivableModule, {
 	panel:null, 
 
 	onClear: function(context) {
-		this.trace("onClear");
+		trace("onClear");
 		
 		var panel = context.getPanel(panelName, true);
 		
@@ -162,14 +157,14 @@ Flashbug.ConsoleModule = extend(Firebug.ActivableModule, {
     },
 	
 	onPause: function(context, panel) {
-		this.trace("onPause");
+		trace("onPause");
 		
 		this.selectedReader.paused = true;
 		this.readTimer.cancel();
 	},
 	
 	onPlay: function(context, panel) {
-		this.trace("onPlay");
+		trace("onPlay");
 		
 		// Play if 
 		this.selectedReader.paused = false;
@@ -180,15 +175,15 @@ Flashbug.ConsoleModule = extend(Firebug.ActivableModule, {
 	
 	onOpen: function(context) {
 		var file = this.selectedReader.name == "Trace" ? Flashbug.logFile : Flashbug.policyFile;
-		this.trace("onOpen: " + file.path, file);
+		trace("onOpen: " + file.path, file);
 		Flashbug.launchFile(file);
 	},
 	
 	onSelectLog: function(context, view, panel) {
-		//this.trace("onSelectLog - " + view);
-		Firebug.setPref(Firebug.prefDomain, "flashbug.defaultTab", view.toLowerCase());
+		//trace("onSelectLog - " + view);
+		Firebug.setPref(Firebug.prefDomain, "flashbug.console.defaultTab", view.toLowerCase());
 		
-		this.selectedReader = this[Firebug.getPref(Firebug.prefDomain, "flashbug.defaultTab") + "Reader"];
+		this.selectedReader = this[Firebug.getPref(Firebug.prefDomain, "flashbug.console.defaultTab") + "Reader"];
 		
 		// Quick display file data
 		var modified = this.readFile();
@@ -210,7 +205,7 @@ Flashbug.ConsoleModule = extend(Firebug.ActivableModule, {
 	
 	readFile: function() {
 		if (typeof Flashbug == 'undefined') return null;
-		//this.trace("readFile " + this.selectedReader.name, this);
+		//trace("readFile " + this.selectedReader.name, this);
 		
 		// Read the file
 		var cis = CCIN("@mozilla.org/intl/converter-input-stream;1", "nsIConverterInputStream");
@@ -229,7 +224,7 @@ Flashbug.ConsoleModule = extend(Firebug.ActivableModule, {
 				// Read File
 				var fis = CCIN("@mozilla.org/network/file-input-stream;1", "nsIFileInputStream");
 				fis.init(file, 0x01, 4, null);
-				cis.init(fis, Firebug.getPref(Firebug.prefDomain, "flashbug.charSet"), 1024, Ci.nsIConverterInputStream.DEFAULT_REPLACEMENT_CHARACTER);
+				cis.init(fis, Firebug.getPref(Firebug.prefDomain, "flashbug.console.charSet"), 1024, Ci.nsIConverterInputStream.DEFAULT_REPLACEMENT_CHARACTER);
 				if(cis instanceof Ci.nsIUnicharLineInputStream) {
 					var firstLine = true;
 					do {
@@ -249,10 +244,10 @@ Flashbug.ConsoleModule = extend(Firebug.ActivableModule, {
 			this.selectedReader.paused = true;
 		}
 		
-		this.trace("read file modified:" + modified + " PrevLength:" + this.selectedReader.arrTextPrevLength + " NewLength:" + this.selectedReader.arrText.length);
+		trace("read file modified:" + modified + " PrevLength:" + this.selectedReader.arrTextPrevLength + " NewLength:" + this.selectedReader.arrText.length);
 		
 		this.selectedReader.arrTextDiff = (this.selectedReader.arrTextPrevLength > 0) ? this.selectedReader.arrText.slice(this.selectedReader.arrTextPrevLength) : this.selectedReader.arrText.slice();
-		//this.trace("read file diff", this.selectedReader.arrTextDiff);
+		//trace("read file diff", this.selectedReader.arrTextDiff);
 		this.selectedReader.arrTextPrevLength = this.selectedReader.arrText.length;
 		
 		// Display contents
@@ -272,13 +267,13 @@ Flashbug.ConsoleModule = extend(Firebug.ActivableModule, {
 	displayValues: function() {
 		if(!this.panel) return;
 		
-		this.trace("displayValues " + this.selectedReader.name, this);
+		trace("displayValues " + this.selectedReader.name, this);
 		
 		var text = '', 
 		startElement = null,
 		matchResult = {label:''}, 
 		hasChanged = false,
-		maxLines = Firebug.getPref(Firebug.prefDomain, 'flashbug.maxLines'),
+		maxLines = Firebug.getPref(Firebug.prefDomain, 'flashbug.console.maxLines'),
 		i = 0, 
 		l = this.selectedReader.arrTextDiff.length, 
 		className = '',
@@ -421,13 +416,13 @@ Flashbug.ConsoleModule = extend(Firebug.ActivableModule, {
 					// Error handling
 					var nsURI = 'http://www.mozilla.org/newlayout/xml/parsererror.xml';
 					if (root.namespaceURI == nsURI && root.nodeName == 'parsererror') {
-						this.trace('xml error - "' + text + '"');
-						Flashbug.ConsoleModule.XMLError.tag.replace({error: {
+						trace('xml error - "' + text + '"');
+						Flashbug.ConsoleModule.XMLErrorRep.tag.replace({error: {
 						message: root.firstChild.nodeValue + ' [' + text + ']',
 						source: root.lastChild.textContent
 						}}, div);
 					} else {
-						this.trace('xml - "' + text + '"', root);
+						trace('xml - "' + text + '"', root);
 						Firebug.HTMLPanel.CompleteElement.tag.replace({object: root}, div);
 						div.setAttribute('class', 'flb-trace-row');
 					}
@@ -458,9 +453,7 @@ Flashbug.ConsoleModule = extend(Firebug.ActivableModule, {
 			this.selectedReader.divLog.appendChild(docFrag);
 			
 			// If node is displayed & Auto scroll
-			if(Firebug.getPref(Firebug.prefDomain, "flashbug.autoScroll")) {
-				this.panel.refresh();
-			}
+			if(Firebug.getPref(Firebug.prefDomain, "flashbug.console.autoScroll")) this.panel.refresh();
 		}
 		
 		// Prevent pause/play from adding the same content
@@ -468,7 +461,7 @@ Flashbug.ConsoleModule = extend(Firebug.ActivableModule, {
 	},
 	
 	matchPattern: function(line) {
-		//this.trace('matchPattern');
+		//trace('matchPattern');
 		var i = arrPattern.length, pattern;
 		while (i--) {
 			pattern = arrPattern[i];
@@ -496,7 +489,7 @@ Flashbug.ConsoleModule.Rep = domplate(Firebug.Rep, {
     }
 });
 
-Flashbug.ConsoleModule.XMLError = domplate(Flashbug.ConsoleModule.Rep, {
+Flashbug.ConsoleModule.XMLErrorRep = domplate(Flashbug.ConsoleModule.Rep, {
 	inspectable: false,
 	
 	tag:
@@ -506,7 +499,7 @@ Flashbug.ConsoleModule.XMLError = domplate(Flashbug.ConsoleModule.Rep, {
         )
 });
 
-Flashbug.ConsoleModule.PanelDiv = domplate(Flashbug.ConsoleModule.Rep, {
+Flashbug.ConsoleModule.BodyRep = domplate(Flashbug.ConsoleModule.Rep, {
 	inspectable: false,
 	
 	tag:
@@ -551,10 +544,10 @@ ConsolePanel.prototype = extend(Firebug.ActivablePanel, {
 	
 	// Called at the end of module.initialize; addEventListener-s here
 	initializeNode: function(panelNode) {
-		this.trace("initializeNode");
+		trace("initializeNode");
 		
 		// Add Divs
-		Flashbug.ConsoleModule.PanelDiv.tag.replace({}, this.panelNode, this);
+		Flashbug.ConsoleModule.BodyRep.tag.replace({}, this.panelNode, this);
 		this.traceNode = this.panelNode.getElementsByClassName("flb-trace-info-trace-text")[0];
 		this.policyNode = this.panelNode.getElementsByClassName("flb-trace-info-policy-text")[0];
 		
@@ -566,7 +559,7 @@ ConsolePanel.prototype = extend(Firebug.ActivablePanel, {
 	
 	// this is how a panel in one window reappears in another window; lazy called
 	reattach: function(doc) {
-		this.trace("reattach");
+		trace("reattach");
 		
 		this.showVersion();
 		this.refresh();
@@ -575,7 +568,7 @@ ConsolePanel.prototype = extend(Firebug.ActivablePanel, {
 	},
 	
 	refresh: function() {
-		this.trace("refresh");
+		trace("refresh");
 		
 		// Set the tooltips and update break-on-next button's state.
         var shouldBreak = this.shouldBreakOnNext();
@@ -592,7 +585,7 @@ ConsolePanel.prototype = extend(Firebug.ActivablePanel, {
 		node.appendChild(selectedReader.divLog);
 		
 		// If node is displayed & Auto scroll
-		if(node == this.selectedNode && Firebug.getPref(Firebug.prefDomain, "flashbug.autoScroll")) {
+		if(node == this.selectedNode && Firebug.getPref(Firebug.prefDomain, "flashbug.console.autoScroll")) {
 			scrollToBottom(this.panelNode);
 		}
 	},
@@ -600,13 +593,13 @@ ConsolePanel.prototype = extend(Firebug.ActivablePanel, {
 	// The panel was disabled so, show the disabled page. 
 	// This page also replaces the old content so, the panel is fresh empty after it's enabled again.
 	show: function(state) {
-		this.trace("show");
+		trace("show");
 		
 		// Show Player Version
 		this.showToolbarButtons("fbFlashbugVersion", true);
 		
 		// Open last/default tab
-		if(Firebug.getPref(Firebug.prefDomain, "flashbug.defaultTab") == "trace") {
+		if(Firebug.getPref(Firebug.prefDomain, "flashbug.console.defaultTab") == "trace") {
 			Firebug.chrome.$("flashbugLogFilter-trace").checked = true;
 		} else {
 			Firebug.chrome.$("flashbugLogFilter-policy").checked = true;
@@ -617,7 +610,7 @@ ConsolePanel.prototype = extend(Firebug.ActivablePanel, {
 	
 	// store info on state for next show.
 	hide: function(state) {
-		this.trace("hide");
+		trace("hide");
 		
 		// Hide Player Version
 		this.showToolbarButtons("fbFlashbugVersion", false);
@@ -632,7 +625,7 @@ ConsolePanel.prototype = extend(Firebug.ActivablePanel, {
      * @return an array of menu items.
      */
 	getContextMenuItems: function(object, target, context) {
-		this.trace("getContextMenuItems");
+		trace("getContextMenuItems");
         
 		// Remove default 'Copy' command
         var popup = $("fbContextMenu");
@@ -654,15 +647,15 @@ ConsolePanel.prototype = extend(Firebug.ActivablePanel, {
     // {label: 'name', nol10n: true,  type: "checkbox", checked: <value>, command:function to set <value>}
 	// function optionMenu(label, option, tooltiptext)
 	getOptionsMenuItems: function(context) {
-		this.trace("getOptionsMenuItems");
+		trace("getOptionsMenuItems");
 		return [
 			{
 				label: $FL_STR("flashbug.options.autoscroll"),
 				type: "checkbox",
-				checked: Firebug.getPref(Firebug.prefDomain, "flashbug.autoScroll"),
-				option: "flashbug.autoScroll",
+				checked: Firebug.getPref(Firebug.prefDomain, "flashbug.console.autoScroll"),
+				option: "flashbug.console.autoScroll",
 				tooltiptext: $FL_STR("flashbug.options.autoscrollToolTip"),
-				command: bindFixed(Firebug.setPref, Firebug, Firebug.prefDomain, "flashbug.autoScroll", !Firebug.getPref(Firebug.prefDomain, "flashbug.autoScroll"))
+				command: bindFixed(Firebug.setPref, Firebug, Firebug.prefDomain, "flashbug.console.autoScroll", !Firebug.getPref(Firebug.prefDomain, "flashbug.console.autoScroll"))
 			},
 			"-",
 			{
@@ -682,7 +675,7 @@ ConsolePanel.prototype = extend(Firebug.ActivablePanel, {
 	},
 	
 	search: function(text, reverse) {
-		this.trace("search - text:" + text + " reverse:" + reverse);
+		trace("search - text:" + text + " reverse:" + reverse);
 		
 		if (!text) {
             delete this.currentSearch;
@@ -742,10 +735,10 @@ ConsolePanel.prototype = extend(Firebug.ActivablePanel, {
 	order: 70,
 	
 	showLog: function() {
-		this.trace("showLog - " + Firebug.getPref(Firebug.prefDomain, "flashbug.defaultTab"));
+		trace("showLog - " + Firebug.getPref(Firebug.prefDomain, "flashbug.console.defaultTab"));
 		
 		if(this.selectedNode) this.selectedNode.removeAttribute("selected");
-		this.selectedNode = getChildByClass(this.panelNode.firstChild, "flb-trace-info-" + Firebug.getPref(Firebug.prefDomain, "flashbug.defaultTab").toLowerCase() + "-text");
+		this.selectedNode = getChildByClass(this.panelNode.firstChild, "flb-trace-info-" + Firebug.getPref(Firebug.prefDomain, "flashbug.console.defaultTab").toLowerCase() + "-text");
 		this.selectedNode.setAttribute("selected", "true");
 		
 		// So search doesn't freeze when switching logs
@@ -754,7 +747,7 @@ ConsolePanel.prototype = extend(Firebug.ActivablePanel, {
 	
 	showVersion: function() {
 		var version = Flashbug.playerVersion;
-		this.trace("showVersion : '" + version + "'");
+		trace("showVersion : '" + version + "'");
 		
 		// If we know for sure they have the debugger, hide link
 		if(version.indexOf("Debug") != -1) Firebug.chrome.$("fbFlashbugDownload").style.display = 'none';
@@ -866,13 +859,5 @@ var LogPanelSearch = function(panel, rowFinder) {
 Firebug.ConsoleModule = Flashbug.ConsoleModule;
 Firebug.registerActivableModule(Flashbug.ConsoleModule);
 Firebug.registerPanel(ConsolePanel);
-
-/////////////////////////////
-// Firebug Trace Constants //
-/////////////////////////////
-
-FBTrace.DBG_FLASH = 				Firebug.getPref(Firebug.prefDomain, "DBG_FLASH");
-FBTrace.DBG_FLASH_CONSOLE_PANEL = 	Firebug.getPref(Firebug.prefDomain, "DBG_FLASH_CONSOLE_PANEL");
-FBTrace.DBG_FLASH_CONSOLE_MODEL = 	Firebug.getPref(Firebug.prefDomain, "DBG_FLASH_CONSOLE_MODEL");
 
 }});

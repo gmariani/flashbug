@@ -49,7 +49,7 @@
 
 	<hbox id="fbToolbarInner" insertbefore="fbDetachButton" class="innerToolbar" flex="1" align="center" >
 		
-		<hbox id="fbFlashbugButtons" insertafter="fbNetButtons" collapsed="true">
+		<hbox id="fbFlashbugButtons" insertafter="fbCookieButtons" collapsed="true">
 			<toolbarseparator class="fbPanelSpecificButtonsSeparator"/>
 			<toolbarbutton id="flbClear" 
 				label="flashbug.menu.clear" 

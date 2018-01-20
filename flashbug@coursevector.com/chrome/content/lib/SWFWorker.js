@@ -3,7 +3,6 @@ importScripts('ByteArrayString.js', 'CFFUtil.js', 'WAVUtil.js', 'ZipUtil.js');
 var config = {};
 var soundStreamID = 1;
 var hasSoundBlock = false;
-var streams = [];
 var push = Array.prototype.push;
 const BitmapType = {
 	JPEG:1,
@@ -373,8 +372,8 @@ function readEdges(ba, fillStyles, lineStyles, withAlpha, withLineV2, morph, obj
 		};
 	} else {
 		// If multipath, return array
-		var segments = [];
-		for (var i = 0; fillStyles[i]; i++) {
+		var segments = [], fillStyle;
+		for (var i = 0; (fillStyle = fillStyles[i]); i++) {
 			var fill = i + 1,
 				list = leftFillEdges[fill],
 				fillEdges = [],
@@ -420,8 +419,8 @@ function readEdges(ba, fillStyles, lineStyles, withAlpha, withLineV2, morph, obj
 					    
 					    if (!(list && list.length)) break;
 						
-					    for (var k = 0; list[k]; k++) {
-							var entry = list[k];
+					   var entry;
+						for (var k = 0; (entry = list[k]); k++) {
 							if(entry == favEdge && !entry.c) {
 								list.splice(k, 1);
 								nextEdge = entry;
@@ -429,8 +428,7 @@ function readEdges(ba, fillStyles, lineStyles, withAlpha, withLineV2, morph, obj
 					    }
 					    
 					    if (!nextEdge) {
-							for(var k = 0; list[k]; k++) {
-								var entry = list[k];
+							for(var k = 0; (entry = list[k]); k++) {
 								if (!(entry.c || usedMap[entry.i])) nextEdge = entry;
 							}
 					    }
@@ -546,6 +544,7 @@ function readFillStyle(ba, withAlpha, morph, obj) {
 			return style;
 			break;
 	}
+	return null;
 };
 
 function readLineStyleArray(ba, withAlpha, withLineV2, morph, obj) {
@@ -704,14 +703,14 @@ function getStyle(fill, line, id, morphIdx) {
 			if (undefined != alpha && alpha < 1) fillAttr += ' stroke-opacity="' + alpha + '"';
 		}
 		
-		if (line.joinStyle == 2) fillAttr += ' stroke-miterlimit="' + line.miterLimitFactor + '"'; // Miter limit factor is an 8.8 fixed-point value.
+		if (line.hasOwnProperty('joinStyle') && line.joinStyle == 2) fillAttr += ' stroke-miterlimit="' + line.miterLimitFactor + '"'; // Miter limit factor is an 8.8 fixed-point value.
 		
-		if (line.startCapStyle instanceof Number) {
+		if (line.hasOwnProperty('startCapStyle') && line.startCapStyle instanceof Number) {
 			var lineCap = ['butt','round', 'square'];
 			fillAttr += ' stroke-linecap="' + lineCap[line.startCapStyle] + '"'; // endCapStyle ignored for now
 		}
 		
-		if (line.joinStyle instanceof Number) {
+		if (line.hasOwnProperty('joinStyle') && line.joinStyle instanceof Number) {
 			var lineJoin = ['round','bevel','miter'];
 			fillAttr += ' stroke-linejoin="' + lineJoin[line.joinStyle] + '"';
 		}
@@ -813,7 +812,7 @@ function getFill(fill, id, morphIdx) {
 };
 
 function getMatrix(matrix, morphIdx) {
-	var matrix = matrix instanceof Array ? matrix[morphIdx] : matrix;
+	matrix = matrix instanceof Array ? matrix[morphIdx] : matrix;
 	return "matrix(" + [
 		matrix.scaleX, matrix.skewX,
 		matrix.skewY, matrix.scaleY,
@@ -989,12 +988,14 @@ function formatNumber(number) {
 
 // Type 0
 function readEnd(obj, tag, ba) {
-	if(hasSoundBlock) streams.pop();
+	//if(hasSoundBlock) streams.pop();
+	obj.stage.pop();
 };
 
 // Type 1
 function readShowFrame(obj, tag, ba) {
 	obj.frameIndex++;
+	obj.stage.push(new Frame());
 };
 
 // Type 2
@@ -1345,7 +1346,7 @@ function readDefineText(obj, tag, ba, withAlpha) {
 			
 			str = {};
 			str.fontID = fontID;
-			str.font = font ? font.info.name : '';
+			str.font = font && font.info ? font.info.name : '';
 			str.textColor = textColor;
 			str.x = x;
 			str.y = y;
@@ -1387,8 +1388,10 @@ function readDefineText(obj, tag, ba, withAlpha) {
 	
 	for(var i = 0, string = strings[0]; string; string = strings[++i]) {
 		var entries = string.glyphEntries,
-			font = obj.dictionary[string.fontID],
-			codes = font.info.codeTable,
+			font = obj.dictionary[string.fontID];
+			
+			if (!font.info) continue;
+			var codes = font.info.codeTable,
 			chars = [];
 		for(var j = 0, entry = entries[0]; entry; entry = entries[++j]){
 			var str = fromCharCode(codes[entry.index]);
@@ -1863,12 +1866,12 @@ function convertActions(actionsRaw) {
 		}
 		
 		// End If
-		if (branches.length && o.pos > branches[branches.length - 1]) { 
+		/*if (branches.length && o.pos > branches[branches.length - 1]) {
 			while (o.pos > branches[branches.length - 1]) {
 				stack.push('}');
 				branches.pop();
 			}
-		}
+		}*/
 	}
 	
 	return stack;//.join('\n\r');
@@ -1973,7 +1976,7 @@ function readSoundStreamHead(obj, tag, ba) {
 	
 	if(typeof obj.sounds == "undefined") obj.sounds = [];
 	obj.sounds.push(snd);
-	streams.push(obj.sounds.length - 1);
+	obj.streams.push(obj.sounds.length - 1);
 	
 	return snd;
 }
@@ -2006,7 +2009,7 @@ function readSoundStreamBlock(obj, tag, ba) {
 	hasSoundBlock = true;
 	
 	// Get last stream
-	var i = streams[streams.length - 1];
+	var i = obj.streams[obj.streams.length - 1];
 	
 	// If found, append stream block
 	if(i != null) {
@@ -2332,11 +2335,14 @@ function readDefineSprite(obj, tag, ba) {
 	spr.type = 'Sprite';
 	spr.id = ba.readUI16();
 	spr.dictionary = [];// obj.dictionary;
-	spr.videos = obj.videos;
 	spr.frames = [];
 	spr.version = obj.version;
 	spr.frameIndex = 1;
 	spr.frameCount = ba.readUI16();
+	
+	spr.streams = [];
+	spr.stage = [new Frame()];
+	spr.frameRate = obj.frameRate;
 	
 	// Control tags
 	readTags(spr, ba);
@@ -3865,6 +3871,7 @@ function readDefineBinaryData(obj, tag, ba) {
 				case 0x0C:
 					return ba2.readString();
 			};
+			return null;
 		}
 
 		function readOPCode(ba2, bd) {
@@ -4254,20 +4261,6 @@ function readTags(obj, ba) {
 			var startPos = ba.position;
 			//trace2(ba.position + ' - ' + TAGS[tag.type].name + ' (' + tag.type + ') - ' + tag.contentLength);
 			
-			// Config tag parsing
-			if (
-				(!config.font && (tag.type == 10 || tag.type == 13 || tag.type == 62 || tag.type == 48 || tag.type == 75 || tag.type == 73 || tag.type == 88 || tag.type == 91)) || /* Font */
-				(!config.binary && tag.type == 87) || /* Binary */
-				(!config.video && (tag.type == 60 || tag.type == 61)) || /* Video */
-				(!config.shape && (tag.type == 2 || tag.type == 22 || tag.type == 32 || tag.type == 83)) || /* Shape */
-				(!config.morph && (tag.type == 46 || tag.type == 84)) || /* Morph */
-				(!config.image && (tag.type == 6 || tag.type == 8 || tag.type == 21 || tag.type == 35 || tag.type == 20 || tag.type == 36 || tag.type == 90)) || /* Image */
-				(!config.sound && (tag.type == 14 || tag.type == 18 || tag.type == 45 || tag.type == 19)) || /* Sound */
-				((!config.text || !config.font) && (tag.type == 11 || tag.type == 37 || tag.type == 74)) /* Text */
-			) {
-				f = skipTag;
-			}
-			
 			// Read tag
 			f(obj, tag, ba);
 			
@@ -4287,12 +4280,20 @@ function readTags(obj, ba) {
 	}
 }
 
+function Frame() {
+	this.actions = [];
+	this.label = '';
+	this.displayList = [];
+};
+
 onmessage = function(event) {
 	var ba = new Flashbug.ByteArrayString(event.data.text, Flashbug.ByteArrayString.LITTLE_ENDIAN);
 	config = event.data.config;
-	
+
 	var obj = {};
+	obj.streams = [];
 	obj.dictionary = [];
+	obj.stage = [new Frame()];
 	obj.frames = [];
 	obj.frameIndex = 1;
 	ba = readHeader(obj, ba);

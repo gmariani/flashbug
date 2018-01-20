@@ -12,12 +12,10 @@ http://blog.theroyweb.com/extracting-wav-file-header-information-using-a-python-
 // TODO: Inspector Panel - memory profiler
 // TODO: ByteArrayString.readString - If Flash 5- read ANSI or shift-JIS
 
-1.8.5 - 
-Improved support for Firebug 1.9
-
-1.8.4 - 
-Supports Firefox 9, 10, 11
-Supports Firebug 1.9
+1.10.0 -
+Brainball cheating
+Adds panels after Cookies panel
+Allows AMF export even on fail
 
 1.8.3 -
 Supports Firefox 8,9

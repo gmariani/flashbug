@@ -1,10 +1,10 @@
 FBL.ns(function() { with (FBL) {
 
 // Constants
-const panelName = "flbInspector";
+const panelName = "flashInspector";
 const observerSvc = CCSV("@mozilla.org/observer-service;1", "nsIObserverService");
 // side panels
-const apiPanel = "flbInspectorAPI";
+const apiPanel = "flashInspectorAPI";
 
 var $FL_STR = Flashbug.$FL_STR,
 $FL_STRF = Flashbug.$FL_STRF;

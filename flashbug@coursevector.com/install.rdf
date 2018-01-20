@@ -3,9 +3,8 @@
 
 	<Description about="urn:mozilla:install-manifest">
 		<em:id>flashbug@coursevector.com</em:id>
-		<em:version>1.8.5</em:version>
+		<em:version>1.10.0</em:version>
 		<em:type>2</em:type>
-		<!-- -p 'Development' -purgecaches -->
 		<em:unpack>true</em:unpack>
 		
 		<!-- Firefox -->

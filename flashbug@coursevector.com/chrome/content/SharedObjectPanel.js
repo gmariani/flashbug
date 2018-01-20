@@ -1,17 +1,23 @@
 FBL.ns(function() { with (FBL) {
 
 // Constants
-const panelName = "flbSharedObjects";
 
 var Ci = Components.interfaces;
 var Cc = Components.classes;
 var Cu = Components.utils;
+var panelName = "flashSharedObjects";
 
 var $FL_STR = Flashbug.$FL_STR,
 $FL_STRF = Flashbug.$FL_STRF;
 
 // ************************************************************************************************
 // Array Helpers
+var trace = function(msg, obj) {
+		if (FBTrace.DBG_FLASH_SOL) FBTrace.sysout('flashbug; SharedObject - ' + msg, obj);
+	},
+	ERROR = function(e) {
+		 if (FBTrace.DBG_FLASH_ERRORS) FBTrace.sysout('flashbug; ERROR ' + e);
+	};
 
 function cloneMap(map) {
     var newMap = [];
@@ -28,22 +34,11 @@ var contexts = new Array();
 // Module Implementation
 //-----------------------------------------------------------------------------
 
-Flashbug.SOLModule = extend(Firebug.ActivableModule, {
+Flashbug.SharedObjectModule = extend(Firebug.ActivableModule, {
 	
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	// Shared Objects Module                                                                    //
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	
-	trace: function(msg, obj) {
-		msg = "Flashbug - SO Model::" + msg;
-		if (FBTrace.DBG_FLASH_SOL_MODEL) {
-			if (typeof FBTrace.sysout == "undefined") {
-				Flashbug.alert(msg + " | " + obj);
-			} else {
-				FBTrace.sysout(msg, obj);
-			}
-		}
-	},
 	
 	/////////////////////////////
 	// Firebug Module Override //
@@ -53,7 +48,7 @@ Flashbug.SOLModule = extend(Firebug.ActivableModule, {
 	* Called by Firebug when Firefox window is opened.
 	*/
 	initialize: function() {
-		this.trace("initialize");
+		trace("initialize");
 		
 		var dir = Flashbug.flashPlayerDirectory;
 		dir.append("#SharedObjects");
@@ -71,7 +66,7 @@ Flashbug.SOLModule = extend(Firebug.ActivableModule, {
 	},
 	
 	internationalizeUI: function(doc) {
-		this.trace("internationalizeUI");
+		trace("internationalizeUI");
         var elements = ["flbRefresh", "flbDeleteAll", "fbFlashbugDownload", "flbVersion"];
         var attributes = ["label", "tooltiptext", "value"];
 		
@@ -82,7 +77,7 @@ Flashbug.SOLModule = extend(Firebug.ActivableModule, {
 	* Called by Firebug when Firefox window is closed.
 	*/
     shutdown: function() {
-		this.trace("shutdown");
+		trace("shutdown");
 		Firebug.NetMonitor.removeListener(this);
     },
 	
@@ -111,12 +106,12 @@ Flashbug.SOLModule = extend(Firebug.ActivableModule, {
 	* Called when a new context is created but before the page is loaded.
 	*/
 	initContext: function(context, persistedState) {
-		this.trace("initContext");
+		trace("initContext");
 		
 		var tabId = Firebug.getTabIdForWindow(context.window);
 		
 		// Create sub-context for solDomains. The solDomains object exists within the context even if the panel is disabled
-        	context.solDomains = {};
+        context.solDomains = {};
 		context.length = 0;
 		
 		// The temp context isn't created e.g. for empty tabs, chrome pages.
@@ -131,7 +126,7 @@ Flashbug.SOLModule = extend(Firebug.ActivableModule, {
 	* Called when a context is destroyed. Module may store info on persistedState for reloaded pages.
 	*/
 	destroyContext: function(context) {
-		this.trace("destroyContext");
+		trace("destroyContext");
 		
 		for (var p in context.solDomains) {
             delete context.solDomains[p];
@@ -149,7 +144,7 @@ Flashbug.SOLModule = extend(Firebug.ActivableModule, {
 	dir: null,
 	
 	openPath: function(url) {
-		this.trace("openPath");
+		trace("openPath");
 		var f = CCIN("@mozilla.org/file/local;1", "nsILocalFile");
 		f.initWithPath(url);
 		Flashbug.launchFile(f);
@@ -158,7 +153,7 @@ Flashbug.SOLModule = extend(Firebug.ActivableModule, {
 	// Asks the operating system to open the folder which contains this file or folder. 
 	// This routine only works on platforms which support the ability to open a folder. 
 	revealPath: function(url) {
-		this.trace("revealPath");
+		trace("revealPath");
 		var f = CCIN("@mozilla.org/file/local;1", "nsILocalFile");
 		f.initWithPath(url);
 		
@@ -184,26 +179,27 @@ Flashbug.SOLModule = extend(Firebug.ActivableModule, {
     },
 	
 	onResponse: function(context, file) {
-		//this.trace("onResponse");
+		//trace("onResponse");
 		this.addDomain(context, file, file.request.URI.asciiSpec);
 	},
 	
 	onCachedResponse: function(context, file) {
-		//this.trace("onCachedResponse");
+		//trace("onCachedResponse");
 		this.addDomain(context, file, file.request.URI.asciiSpec);
 	},
 	
 	onExamineResponse: function(context, request) {
-		//this.trace("onExamineResponse");
+		//trace("onExamineResponse");
 		this.addDomain(context, request, request.URI.asciiSpec);
 	},
 	
 	onExamineCachedResponse: function(context, request) {
-		//this.trace("onExamineCachedResponse");
+		//trace("onExamineCachedResponse");
 		this.addDomain(context, request, request.URI.asciiSpec);
 	},
 	
 	addDomain: function(context, file, href) {
+		trace("addDomain", file);
 		var request = file.hasOwnProperty('request') ? file.request : file;
 		
 		try {
@@ -227,7 +223,7 @@ Flashbug.SOLModule = extend(Firebug.ActivableModule, {
 		// Maybe for old swfs? The example is Flash 6
 		// i.e. http://netticat.ath.cx/BetterPrivacy/BetterPrivacy.htm
 		var arrDomain = domain.split(".");
-		while(arrDomain.length > 2) {
+		while (arrDomain.length > 2) {
 			arrDomain.shift();
 		}
 		var baseDomain = arrDomain.join(".");
@@ -269,35 +265,44 @@ Flashbug.SOLModule = extend(Firebug.ActivableModule, {
 			if (!context.solDomains[domain]) {
 				context.solDomains[domain] = domain;
 				hasAdded = true;
-				this.trace("addDomain: " + context.solDomains[domain]);
+				trace("addDomain: " + context.solDomains[domain]);
 			}
 			
 			if (!context.solDomains[fullDomain]) {
 				context.solDomains[fullDomain] = fullDomain;
 				hasAdded = true;
-				this.trace("addDomain: " + context.solDomains[fullDomain]);
+				trace("addDomain: " + context.solDomains[fullDomain]);
 			}
 			
 			if (!context.solDomains[baseDomain]) {
 				context.solDomains[baseDomain] = baseDomain;
 				hasAdded = true;
-				this.trace("addDomain: " + context.solDomains[baseDomain]);
+				trace("addDomain: " + context.solDomains[baseDomain]);
 			}
 			
 			// Refresh the panel asynchronously.
 			if(hasAdded && context instanceof Firebug.TabContext) context.invalidatePanels(panelName); 
+			
+			// Refresh the panel asynchronously.
+			/*if(hasAdded && context instanceof Firebug.TabContext) {
+				if (isFirst) {
+					context.invalidatePanels(panelName);
+				} else {
+					context.getPanel(childPanelName).append(file);
+				}
+			}*/
 		}
 	},
 	
 	refresh: function(context) {
-		this.trace("refresh");
+		trace("refresh");
 		
 		var panel = context.getPanel(panelName, true);
 		if(panel) panel.refresh();
 	},
 	
 	deleteAll: function(context) {
-		this.trace("deleteAll");
+		trace("deleteAll");
 		
 		var panel = context.getPanel(panelName, true);
 		if(panel) panel.deleteAll();
@@ -307,7 +312,7 @@ Flashbug.SOLModule = extend(Firebug.ActivableModule, {
 // DOMPlate Implementation
 //-----------------------------------------------------------------------------
 
-Flashbug.SOLModule.Rep = domplate(Firebug.Rep, {
+Flashbug.SharedObjectModule.Rep = domplate(Firebug.Rep, {
 	inspectable: false,
 	
     getContextMenuItems: function(cookie, target, context) {
@@ -320,7 +325,7 @@ Flashbug.SOLModule.Rep = domplate(Firebug.Rep, {
  * @domplate Represents a template for basic cookie list layout. This
  * template also includes a header and related functionality (such as sorting).
  */
-Flashbug.SOLModule.CookieTable = domplate(Flashbug.SOLModule.Rep, {
+Flashbug.SharedObjectModule.TableRep = domplate(Flashbug.SharedObjectModule.Rep, {
     inspectable: false,
 
     tag:
@@ -446,7 +451,7 @@ Flashbug.SOLModule.CookieTable = domplate(Flashbug.SOLModule.Rep, {
 		
         // Remember last sorted column & direction in preferences.
         var prefValue = header.getAttribute("id") + " " + (header.sorted > 0 ? "desc" : "asc");
-		Firebug.getPref(Firebug.prefDomain, "flashbug.lastSortedColumn", prefValue);
+		Firebug.getPref(Firebug.prefDomain, "flashbug.sol.lastSortedColumn", prefValue);
     },
 
     supportsObject: function(object) {
@@ -457,12 +462,9 @@ Flashbug.SOLModule.CookieTable = domplate(Flashbug.SOLModule.Rep, {
 /**
  * @domplate Represents a domplate template for cookie entry in the cookie list.
  */
-Flashbug.SOLModule.CookieRow = domplate(Flashbug.SOLModule.Rep, {
+Flashbug.SharedObjectModule.RowRep = domplate(Flashbug.SharedObjectModule.Rep, {
     inspectable: false,
-	
-	trace: Flashbug.SOLModule.trace,
-	ERROR: ERROR,
-
+    
     tag:
         FOR("cookie", "$cookies",
             TR({class: "flb-so-row", _repObject: "$cookie", onclick: "$onClickRow"},
@@ -559,11 +561,11 @@ Flashbug.SOLModule.CookieRow = domplate(Flashbug.SOLModule.Rep, {
 			try {
 				file.remove(false);
 			} catch (e) {
-				this.ERROR(e);
+				ERROR(e);
 			}
 		}
 		
-		Flashbug.SOLModule.refresh(context);
+		Flashbug.SharedObjectModule.refresh(context);
 	},
 	
 	getContextMenuItems: function(data, target, context) {
@@ -578,8 +580,8 @@ Flashbug.SOLModule.CookieRow = domplate(Flashbug.SOLModule.Rep, {
 		items.push(
 			{label: $FL_STR("flashbug.contextMenu.delete"), nol10n: true, command: bindFixed(this.onRemove, this, url, context) },
 			"-",
-			{label: $FL_STR("flashbug.contextMenu.open"), nol10n: true, command: bindFixed(Flashbug.SOLModule.openPath, this, url) },
-			{label: $FL_STR("flashbug.contextMenu.openFolder"), nol10n: true, command: bindFixed(Flashbug.SOLModule.revealPath, this, url) },
+			{label: $FL_STR("flashbug.contextMenu.open"), nol10n: true, command: bindFixed(Flashbug.SharedObjectModule.openPath, this, url) },
+			{label: $FL_STR("flashbug.contextMenu.openFolder"), nol10n: true, command: bindFixed(Flashbug.SharedObjectModule.revealPath, this, url) },
 			"-",
 			{label: $FL_STR("flashbug.contextMenu.copyLocation"), nol10n: true, command: bindFixed(copyToClipboard, FBL, url) }
 		);
@@ -614,23 +616,12 @@ Flashbug.SOLModule.CookieRow = domplate(Flashbug.SOLModule.Rep, {
 // Panel Implementation
 //-----------------------------------------------------------------------------
 
-function SOLPanel() { }
-SOLPanel.prototype = extend(Firebug.ActivablePanel, {
+function SharedObjectPanel() { }
+SharedObjectPanel.prototype = extend(Firebug.ActivablePanel, {
     
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	// Shared Objects Panel                                                                     //
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	
-	trace: function(msg, obj) {
-		msg = "Flashbug - SO Panel::" + msg;
-		if (FBTrace.DBG_FLASH_SOL_PANEL) {
-			if (typeof FBTrace.sysout == "undefined") {
-				Flashbug.alert(msg + " | " + obj);
-			} else {
-				FBTrace.sysout(msg, obj);
-			}
-		}
-	},
 	
 	////////////////////////////
 	// Firebug Panel Override //
@@ -641,7 +632,7 @@ SOLPanel.prototype = extend(Firebug.ActivablePanel, {
 	
 	// Called at the end of module.initialize; addEventListener-s here
 	initializeNode: function(panelNode) {
-		this.trace("initializeNode");
+		trace("initializeNode");
 		
 		this.showVersion();
 		this.refresh();
@@ -649,7 +640,7 @@ SOLPanel.prototype = extend(Firebug.ActivablePanel, {
 	
 	// this is how a panel in one window reappears in another window; lazy called
 	reattach: function(doc) {
-		this.trace("reattach");
+		trace("reattach");
 		
 		this.showVersion();
 		this.refresh();
@@ -658,7 +649,7 @@ SOLPanel.prototype = extend(Firebug.ActivablePanel, {
 	},
 	
 	refresh: function() {
-		this.trace("refresh");
+		trace("refresh");
 		
 		// Do we have access to the context, if so, parse
 		if(this.context && this.context.solDomains) {
@@ -668,7 +659,7 @@ SOLPanel.prototype = extend(Firebug.ActivablePanel, {
 		}
 		
 		// Create cookie list table.
-		Flashbug.SOLModule.CookieTable.tag.replace({}, this.panelNode, Flashbug.SOLModule.CookieTable);
+		Flashbug.SharedObjectModule.TableRep.tag.replace({}, this.panelNode, Flashbug.SharedObjectModule.TableRep);
 		this.summaryRow = this.panelNode.getElementsByClassName('netSummaryRow')[0];
 		
 		// Parse Files
@@ -682,17 +673,17 @@ SOLPanel.prototype = extend(Firebug.ActivablePanel, {
 						var idx = event.data.fileID;
 						var file = t.files[idx];
 						var data = event.data.data;
-						t.trace("Worker message file", file);
-						t.trace("Worker message data", data);
+						trace("Worker message file", file);
+						trace("Worker message data", data);
 						data.fileSize = file.fileSize;
 						data.fullPath = file.path;
 						data.swf = file.parent.leafName;
-						data.path = file.path.replace(Flashbug.SOLModule.dir.path, "");
+						data.path = file.path.replace(Flashbug.SharedObjectModule.dir.path, "");
 						data.path = data.path.replace(file.leafName, "");
 						t.onParseComplete(data);
 					};
 					worker.onerror = function(error) {
-						t.trace("Worker error: " + error.message + "\n");
+						trace("Worker error: " + error.message + "\n");
 						throw error;
 					};
 					
@@ -708,34 +699,34 @@ SOLPanel.prototype = extend(Firebug.ActivablePanel, {
 	},
 	
 	deleteAll: function() {
-		this.trace("deleteAll");
+		trace("deleteAll");
 		for (var i = 0; i < this.files.length; ++i) {
 			var file = this.files[i];
 			if(file.exists()) {
 				try {
 					file.remove(false);
 				} catch (e) {
-					this.ERROR(e);
+					ERROR(e);
 				}
 			}
 		}
 		
-		Flashbug.SOLModule.refresh(this.context);
+		Flashbug.SharedObjectModule.refresh(this.context);
 	},
 	
 	onParseComplete: function(data) {
-		this.trace("onParseComplete", data);
+		trace("onParseComplete", data);
 		this.sols.push(data);
 		
 		// Create cookie list table.
-		Flashbug.SOLModule.CookieTable.tag.replace({}, this.panelNode, Flashbug.SOLModule.CookieTable);
+		Flashbug.SharedObjectModule.TableRep.tag.replace({}, this.panelNode, Flashbug.SharedObjectModule.TableRep);
 		this.summaryRow = this.panelNode.getElementsByClassName("netSummaryRow")[0];
 		
 		// Generate HTML list of cookies using domplate.
 		var totalSize = 0;
         if (this.sols.length) {
             var header = this.panelNode.getElementsByClassName("netHeaderRow")[0];
-            var row = Flashbug.SOLModule.CookieRow.tag.insertRows({cookies: this.sols}, header)[0];
+            var row = Flashbug.SharedObjectModule.RowRep.tag.insertRows({cookies: this.sols}, header)[0];
             for (var i = 0; i < this.sols.length; ++i) {
                 var cookie = this.sols[i];
                 cookie.row = row;
@@ -756,20 +747,20 @@ SOLPanel.prototype = extend(Firebug.ActivablePanel, {
 	
 	// persistedPanelState plus non-persisted hide() values
 	show: function(state) {
-		this.trace("show " + state + " / " + this.panelNode);
+		trace("show " + state + " / " + this.panelNode);
 		this.showToolbarButtons("fbFlashbugVersion", true);
 	},
 	
 	// store info on state for next show.
 	hide: function(state) {
-		this.trace("hide");
+		trace("hide");
 		this.showToolbarButtons("fbFlashbugVersion", false);
 	},
 	
 	// Called when "Options" clicked. Return array of
     // {label: 'name', nol10n: true,  type: "checkbox", checked: <value>, command:function to set <value>}
 	getOptionsMenuItems: function(context) {
-		this.trace("getOptionsMenuItems");
+		trace("getOptionsMenuItems");
 		return [
 			{
 				label: $FL_STR("flashbug.options.pref"),
@@ -795,12 +786,12 @@ SOLPanel.prototype = extend(Firebug.ActivablePanel, {
 	
 	// Gets all shared objects for each domain
 	getSharedObjectsFiles: function(context) {
-		this.trace("getSharedObjectsFiles");
+		trace("getSharedObjectsFiles");
 		var arrFiles = [];
 		try {
 		for (var key in context.solDomains) {
 			var dir2 = CCIN("@mozilla.org/file/local;1", "nsILocalFile");
-			dir2.initWithPath(Flashbug.SOLModule.dir.path);
+			dir2.initWithPath(Flashbug.SharedObjectModule.dir.path);
 			dir2.append(context.solDomains[key]);
 			this.getFiles(arrFiles, dir2);
 		}
@@ -808,13 +799,13 @@ SOLPanel.prototype = extend(Firebug.ActivablePanel, {
 			ERROR(err);
 		}
 		
-		this.trace("getSharedObjectsFiles - Files", arrFiles);
+		trace("getSharedObjectsFiles - Files", arrFiles);
 		return arrFiles;
 	},
 	
 	// Recursively runs through all folders searching for files
 	getFiles: function(arrFiles, dir) {
-		this.trace("getFiles");
+		trace("getFiles");
 		if(dir.exists()) {
 			var entries = dir.directoryEntries;
 			while(entries.hasMoreElements()) {
@@ -831,7 +822,7 @@ SOLPanel.prototype = extend(Firebug.ActivablePanel, {
 	
 	showVersion: function() {
 		var version = Flashbug.playerVersion;
-		this.trace("showVersion : '" + version + "'");
+		trace("showVersion : '" + version + "'");
 		
 		// If we know for sure they have the debugger, hide link
 		if(version.indexOf("Debug") != -1) Firebug.chrome.$("fbFlashbugDownload").style.display = 'none';
@@ -845,21 +836,11 @@ SOLPanel.prototype = extend(Firebug.ActivablePanel, {
 // Firebug Registration //
 //////////////////////////
 Firebug.registerRep(
-	Flashbug.SOLModule.CookieTable,          // Cookie table with list of cookies
-	Flashbug.SOLModule.CookieRow             // Entry in the cookie table
+	Flashbug.SharedObjectModule.TableRep,          // Cookie table with list of cookies
+	Flashbug.SharedObjectModule.RowRep             // Entry in the cookie table
 );
-Firebug.SOLModule = Flashbug.SOLModule;
-Firebug.registerActivableModule(Flashbug.SOLModule);
-Firebug.registerPanel(SOLPanel);
-
-/////////////////////////////
-// Firebug Trace Constants //
-/////////////////////////////
-
-FBTrace.DBG_FLASH_SOL = 	Firebug.getPref(Firebug.prefDomain, "DBG_FLASH_SOL");
-FBTrace.DBG_FLASH_SOL_MODEL = 	Firebug.getPref(Firebug.prefDomain, "DBG_FLASH_SOL_MODEL");
-FBTrace.DBG_FLASH_SOL_PANEL = 	Firebug.getPref(Firebug.prefDomain, "DBG_FLASH_SOL_PANEL");
-FBTrace.DBG_FLASH_AMF3 = 	Firebug.getPref(Firebug.prefDomain, "DBG_FLASH_AMF3");
-FBTrace.DBG_FLASH_AMF0 = 	Firebug.getPref(Firebug.prefDomain, "DBG_FLASH_AMF0");
+Firebug.SOLModule = Flashbug.SharedObjectModule;
+Firebug.registerActivableModule(Flashbug.SharedObjectModule);
+Firebug.registerPanel(SharedObjectPanel);
 
 }});

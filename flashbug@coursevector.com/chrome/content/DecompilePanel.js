@@ -1,10 +1,14 @@
 FBL.ns(function() { with (FBL) {
 
 // Constants
-const panelName = "flbDecompiler";
+const panelName = "flashDecompiler";
+const SWF_MIME = "application/x-shockwave-flash";
+const SWF_MIME2 = "application/shockwave-flash";
+const SPL_MIME = "application/x-futuresplash";
+const SPL_MIME2 = "application/futuresplash";
 const observerSvc = CCSV("@mozilla.org/observer-service;1", "nsIObserverService");
 // side panels
-const treePanel = "flbDecompilerTree";
+const childPanelName = "flashDecompilerTree";
 
 var Ci = Components.interfaces;
 var Cc = Components.classes;
@@ -14,19 +18,11 @@ var $FL_STR = Flashbug.$FL_STR,
 $FL_STRF = Flashbug.$FL_STRF;
 
 var trace = function(msg, obj) {
-	msg = "Flashbug - Flash::" + msg;
-	if (FBTrace.DBG_FLASH_DECOMPILER) {
-		if (typeof FBTrace.sysout == "undefined") {
-			Flashbug.alert(msg + " | " + obj);
-		} else {
-			try {
-				FBTrace.sysout(msg, obj);
-			} catch(e) {
-				alert(e);
-			}
-		}
-	}
-}
+		if (FBTrace.DBG_FLASH_DECOMPILER) FBTrace.sysout('flashbug; DecompileModule - ' + msg, obj);
+	},
+	ERROR = function(e) {
+		 if (FBTrace.DBG_FLASH_ERRORS) FBTrace.sysout('flashbug; ERROR ' + e);
+	};
 
 // ************************************************************************************************
 // Array Helpers
@@ -120,7 +116,7 @@ Flashbug.DecompileModule = extend(Firebug.ActivableModule, {
         collapse(Firebug.chrome.$("fbFlashbugVersion"), !isPanel);
 		
 		if (isPanel) {
-			var side = Flashbug.getContext().getPanel(treePanel);
+			var side = Flashbug.getContext().getPanel(childPanelName);
 			Flashbug.DecompileTreeModule.showPanel(browser, side);
 			
 			// Append CSS
@@ -312,7 +308,7 @@ Flashbug.DecompileModule = extend(Firebug.ActivableModule, {
 				if (isFirst) {
 					context.invalidatePanels(panelName);
 				} else {
-					context.getPanel(treePanel).append(file);
+					context.getPanel(childPanelName).append(file);
 				}
 			}
 		}
@@ -1976,7 +1972,7 @@ DecompilePanel.prototype = extend(Firebug.ActivablePanel, {
 			return;
 		}
 		
-		Flashbug.getContext().getPanel(treePanel).refresh(context.swfs);
+		Flashbug.getContext().getPanel(childPanelName).refresh(context.swfs);
 	},
 	
 	showDetails: function(item) {
@@ -2014,11 +2010,5 @@ function TempContext(tabId) {
 
 Firebug.registerActivableModule(Flashbug.DecompileModule);
 Firebug.registerPanel(DecompilePanel);
-
-/////////////////////////////
-// Firebug Trace Constants //
-/////////////////////////////
-
-FBTrace.DBG_FLASH_DECOMPILER = 	Firebug.getPref(Firebug.prefDomain, "DBG_FLASH_DECOMPILER");
 
 }});

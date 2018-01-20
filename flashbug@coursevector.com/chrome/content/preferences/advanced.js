@@ -1,14 +1,3 @@
-const PREF_SWF_HEADERONLY = 'extensions.firebug.flashbug.enableSWFHeaderOnly';
-const PREF_SWF_FONT = 'extensions.firebug.flashbug.enableSWFFont';
-const PREF_SWF_BINARY = 'extensions.firebug.flashbug.enableSWFBinary';
-const PREF_SWF_VIDEO = 'extensions.firebug.flashbug.enableSWFVideo';
-const PREF_SWF_SHAPE = 'extensions.firebug.flashbug.enableSWFShape';
-const PREF_SWF_MORPH = 'extensions.firebug.flashbug.enableSWFMorph';
-const PREF_SWF_IMAGE = 'extensions.firebug.flashbug.enableSWFImage';
-const PREF_SWF_SOUND = 'extensions.firebug.flashbug.enableSWFSound';
-const PREF_SWF_TEXT = 'extensions.firebug.flashbug.enableSWFText';
-const PREF_SWF_ENABLED = 'extensions.firebug.flashbug.enableSWF';
-
 /*
 bool: A boolean set to either true or false. Usually a checkbox would be connected to these preferences.
 int: An integer
@@ -30,24 +19,10 @@ var advPane = {
 		this._list = $("mmView");
 		
 		// internationalizeUI 
-		var elements = ['swfDesc', 'lblUndocumented', 'mmDesc2', 'enableSWFHeaderOnly', 'enableSWFFont', 'enableSWFText', 'enableSWFVideo', 'enableSWFShape', 'enableSWFMorph', 'enableSWFImage', 'enableSWFSound', 'enableSWFBinary'];
+		var elements = ['lblUndocumented', 'mmDesc2'];
 		var attributes = ['label', 'tooltiptext', 'value', 'title'];
 		
 		Flashbug.internationalizeElements(document, elements, attributes);
-		
-		// Preferences
-		this._prefSvc.addObserver(PREF_SWF_HEADERONLY, this, false);
-		this._prefSvc.addObserver(PREF_SWF_FONT, this, false);
-		this._prefSvc.addObserver(PREF_SWF_BINARY, this, false);
-		this._prefSvc.addObserver(PREF_SWF_VIDEO, this, false);
-		this._prefSvc.addObserver(PREF_SWF_SHAPE, this, false);
-		this._prefSvc.addObserver(PREF_SWF_MORPH, this, false);
-		this._prefSvc.addObserver(PREF_SWF_IMAGE, this, false);
-		this._prefSvc.addObserver(PREF_SWF_SOUND, this, false);
-		this._prefSvc.addObserver(PREF_SWF_TEXT, this, false);
-		
-		// Listen for window unload so we can remove our preference observers.
-		window.addEventListener("unload", this, false);
 		
 		// Sort
 		if (document.getElementById("actionColumn").hasAttribute("sortDirection")) {
@@ -57,9 +32,6 @@ var advPane = {
 			this._sortColumn = document.getElementById("typeColumn");
 		}
 		
-		// Load in swf settings
-		this.onSWFConfig();
-		
 		var _delayedPaneLoad = function(self) {
 			self._rebuildVisibleTypes();
 			self._sortVisibleTypes();
@@ -68,24 +40,7 @@ var advPane = {
 		setTimeout(_delayedPaneLoad, 0, this);
 	},
 	
-	destroy: function() {
-		window.removeEventListener("unload", this, false);
-		
-		this._prefSvc.removeObserver(PREF_SWF_HEADERONLY, this);
-		this._prefSvc.removeObserver(PREF_SWF_FONT, this);
-		this._prefSvc.removeObserver(PREF_SWF_BINARY, this);
-		this._prefSvc.removeObserver(PREF_SWF_VIDEO, this);
-		this._prefSvc.removeObserver(PREF_SWF_SHAPE, this);
-		this._prefSvc.removeObserver(PREF_SWF_MORPH, this);
-		this._prefSvc.removeObserver(PREF_SWF_IMAGE, this);
-		this._prefSvc.removeObserver(PREF_SWF_SOUND, this);
-		this._prefSvc.removeObserver(PREF_SWF_TEXT, this);
-	},
-	
 	show: function() {
-		// Load in swf settings
-		this.onSWFConfig();
-		
 		for (var i = 0; i < this._list.itemCount; i++) {
 			var item = this._list.getItemAtIndex(i),
 			value = this.toXULValue(item, item.getAttribute('typeDescription'));
@@ -184,15 +139,6 @@ var advPane = {
 		}
 	},
 	
-	//**************************************************************************//
-	// nsIDOMEventListener
-	
-	handleEvent: function(aEvent) {
-		if (aEvent.type == "unload") {
-			this.destroy();
-		}
-	},
-	
 	/**
 	* Rebuild the actions menu for the selected entry.  Gets called by
 	* the richlistitem constructor when an entry in the list gets selected.
@@ -281,23 +227,5 @@ var advPane = {
 		if (value == $FL_STR('flashbug.pref.pane.none')) value = '';
 		typeItem.setAttribute('actionDescription', value);
 		mm[typeItem.getAttribute('typeDescription')] = this.toMMValue(typeItem, value);
-	},
-	
-	onSWFConfig: function() {
-		var disabled = $('enableSWF') ? !$('enableSWF').checked : !this._prefSvc.getBoolPref('extensions.firebug.flashbug.enableSWF');
-		
-		$('enableSWFHeaderOnly').disabled = disabled;
-		if (!disabled && $('enableSWFHeaderOnly').checked) disabled = true;
-		
-		$('enableSWFFont').disabled = disabled;
-		$('enableSWFBinary').disabled = disabled;
-		$('enableSWFVideo').disabled = disabled;
-		$('enableSWFShape').disabled = disabled;
-		$('enableSWFMorph').disabled = disabled;
-		$('enableSWFImage').disabled = disabled;
-		$('enableSWFSound').disabled = disabled;
-		
-		if (!disabled && !$('enableSWFHeaderOnly').checked && !$('enableSWFFont').checked) disabled = true;
-		$('enableSWFText').disabled = disabled;
 	}
 }

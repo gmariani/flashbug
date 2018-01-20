@@ -35,6 +35,8 @@
     width: 16px;
     height: 16px;
     background: url(chrome://firebug/skin/loading_16.gif) no-repeat;
+	padding-left: 20px;
+	white-space:nowrap;
 }
 
 .flb-dec-text {
@@ -218,7 +220,7 @@ ul.flash-dec-tree {
 	line-height:18px;
 	margin:-2px 0;
 	min-height:18px;
-	padding:2px 0 2px 15px;
+	padding:2px 0 2px 10px;
 	/*background:url(chrome://flashbug/skin/inspector/dots.png) 6px 1px no-repeat;
 	background-color: transparent;*/
 }
@@ -234,6 +236,20 @@ ul.flash-dec-tree {
 	min-height: 12px;
 }
 .flash-dec-tree li.hasChildren.opened > .flash-dec-twisty {
+	background-image: url(chrome://firebug/skin/win/twistyOpen.png);
+}
+
+/* Twisty */
+.tree li.hasChildren > .twisty2 {
+	background-image: url(chrome://firebug/skin/win/twistyClosed.png);
+	background-repeat: no-repeat;
+	background-position: 2px 2px;
+	display:inline-block;
+	width:15px;
+	height:15px;
+	min-height: 12px;
+}
+.tree li.hasChildren.opened > .twisty2 {
 	background-image: url(chrome://firebug/skin/win/twistyOpen.png);
 }
 
@@ -253,6 +269,7 @@ ul.flash-dec-tree {
 }
 .flash-dec-tree li.hasChildren.opened > ul {
 	display:block;
+	padding: 0;
 }
 
 .flash-dec-tree li:last-child {
@@ -305,7 +322,8 @@ ul.flash-dec-tree {
 .flash-dec-tree li a.fla 			{ background: transparent url(chrome://flashbug/skin/inspector/fla.png) center left no-repeat; }
 .flash-dec-tree li a.swfdis 		{ background: transparent url(chrome://flashbug/skin/inspector/swfdis.png) center left no-repeat; }
 .flash-dec-tree li a.Error 		{ background: transparent url(chrome://flashbug/skin/dialog-warning.png) center left no-repeat; }
-.flash-dec-tree li a.XML 		{ background: transparent url(chrome://flashbug/skin/xml.png) center left no-repeat; }
+.flash-dec-tree li a.XML 			{ background: transparent url(chrome://flashbug/skin/xml.png) center left no-repeat; }
+.flash-dec-tree li a.BinaryBitmap 			{ background: transparent url(chrome://flashbug/skin/inspector/Bitmap.png) center left no-repeat; }
 
 /* Main Display Objects Type Icons */
 .flash-dec-tree li a.Font { background: transparent url(chrome://flashbug/skin/inspector/Font.png) center left no-repeat; }
