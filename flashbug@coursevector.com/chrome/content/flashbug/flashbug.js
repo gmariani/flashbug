@@ -4,1139 +4,886 @@ if(!Flashbug.checkTrustFile()) Flashbug.saveTrustFile();
 FBL.ns(function() { with (FBL) {
 
 /*
-FEATURE: Custom filters/coloring
 
-1.5 - 
-Fixed regex expression for urls
-Fixed regex expression for urls in xml
-Fixed multiline XML with blank lines from AIR apps
-Fixed space between "Player Version:" and version number
-Can now open the log file directly
-Read SharedObject
-(For Firebug 1.4+) Read AMF/Remoting Request Data (not response) (Example: http://www.adobe.com/devnet/flex/tourdeflex/web/#sampleId=13300;illustIndex=0;docIndex=0)
+1.7.3 -
+Added SPL mime type
+Added default locale support (uses firebug pref)
+Fixed small localization bug
+Aligned version data to the right
+Removed extra seperator in SharedObject Panel
 
-1.6 - 
-Fixed directory locations
-Cleaned up code some
-Added AMF/Remoting Response Data
-Added support for Flex/BlazeDS Classes
-Updated JS Player version detection
-Updated Player version display
-Updated mm.cfg creating conditions
+1.7.2 -
+Updated support for Firebug 1.7
 
-1.6.1 -
-Fixed duplicate trace problem
-Fixed localhost sharedobject bug
-
-1.6.2 -
-Fixed Mac OSX save pref bug
-
-1.6.3 -
-Fixed SharedObject discovery bug
-Fixed Mac OSX mm.cfg location, for real this time
-
-1.6.4 - 
-Better error message when unable to clear log file
-Correctly Clear log file
-Fixed mm.cfg location on setups where My Documents is placed different than default
-RC1
-Fixed mm.cfg location on Vista (regression)
-Fixed Ubuntu Trust File
-Updated Player Version display
-RC2
-
+1.7.1 -
+Updated support for Firefox 4
+Updated version compatibility
+Fixed autoscroll bug with Firefox 4
+Added gradient stroke support for decompiled SWFs
+Added 64x64 icon
 
 1.7 - 
-Update Parsers to Minerva 3.2
-Add ability to parse SWFs and display metadata - https://addons.mozilla.org/en-US/firefox/addon/45361?src=oftenusedwith
-Add ability to display @@JSON@@ as a navigable object - https://addons.mozilla.org/en-US/firefox/addon/55979?src=oftenusedwith
-Get AMF exporting working properly
+Supports Firefox 3.6+
+Supports Firebug 1.6+
+Updated AMF parsers to Minerva 3.2
+Fixed MM.cfg creation
+Fixed mm.cfg Vista location
+Fixed Ubuntu trust file creation
+Fixed Ubuntu trust file permissions
+Removed the .DTD file, no more entity based localization
+Removed legacy code
+
+AMF Tab - Asynchronous
+AMF Tab can now export the data
+AMF Tab now has better error handling messages
+AMF Tab now has a fix for the disappearing tab bug
+AMF Tab is now split into two corresponding tabs
+New SWF Tab
+SWF Tab - Asynchronous
+SOL Panel - Asynchronous
+Log Panel - Synchronous
+Log Panel now supports JSON automatically in traces (Must be a single line, no line breaks)
+Log Panel now supports XML automatically in traces (Must be a single line, no line breaks)
+Log Panel now has a min height for traces of blank lines.
+Log Panel now has titles for links in traces
+Log Panel now has a unified Search feature to blend with the native Firebug panels
+New Shared Object Panel
+Shared Object Panel is separated so it can be invidually enabled or disabled
+Shared Object Panel now has a delete all button to remove all Shared Objects detected
+
+Supports exportAssets
+Supports symbolClass
+Supports fileAttributes
+Supports metadata
+Supports protect
+Supports setBackgroundColor
+Supports productInfo
+
+Supports defineBindaryData
+
+Supports JPEGTables
+Supports defineBits
+Supports defineBitsJPEG2
+Supports defineBitsJPEG3
+Supports defineBitsJPEG4 (experimental - needs test)
+Supports defineBitsLossless
+	- 8  bit
+	- 15 bit (experimental - needs test)
+	- 24 bit
+Supports defineBitsLossless2
+	- 8  bit
+	- 32 bit
+
+Supports defineEditText
+Supports defineText
+Supports defineText2
+
+Supports defineFont
+Supports defineFont2
+Supports defineFont3
+Supports defineFont4
+Supports defineFontInfo
+Supports defineFontInfo2
+Supports defineFontName
+
+Supports defineShape
+Supports defineShape2
+Supports defineShape3
+Supports defineShape4
+Supports defineMorphShape
+Supports defineMorphShape2 (experimental - needs test)
+
+Supports defineSound
+Supports soundStreamBlock
+Supports soundStreamHead
+Supports soundStreamHead2
+	- Uncompressed, NE (experimental - needs test)
+	- ADPCM (incomplete) **********************
+	- MP3
+	- Uncompressed, LE
+	- Nellymoser 16 kHz (not started - don't know of a player to test with) **********************
+	- Nellymoser 8 kHz (not started) **********************
+	- Nellymoser (not started) **********************
+	- Speex (needs test) **********************
+
+Supports defineVideoStream
+Supports videoFrame
+	- Sorenson Spark (H.263)
+	- Screen Video
+	- On2 Truemotion VP6
+	- On2 Truemotion VP6 Alpha
+	- Screen Video V2 (experimental - needs test)
+	- H.264 (needs test / not embeddable?) **********************
+	
+Unsupported:
+Bitmap patterns on shapes
+Morph shape animation
+Speex
+Nellymoser
+ADPCM
+Screen Video V2
+H.264
+
+1.7.1 -
+// TODO: Search with regex
+// TODO: Add custom amf NetPanel filter
+// TODO: handle image fills
+// TODO: Finish export ADPCM audio - can't figure out how to convert Flash ADPCM to normal IMA/DVI ADPCM
+http://www.sonicspot.com/guide/wavefiles.html
+http://blog.theroyweb.com/extracting-wav-file-header-information-using-a-python-script
+// TODO: Custom filters/coloring
+
 */
 
 // Constants
-const PR_UINT32_MAX = 0xFFFFFFFF;
 const panelName = "flashbug";
-const FirebugPrefDomain = "extensions.firebug"; // FirebugPrefDomain is not defined in 1.05.
-const NS_SEEK_SET = Ci.nsISeekableStream.NS_SEEK_SET;
-const observerService = CCSV("@mozilla.org/observer-service;1", "nsIObserverService");
-
-// Helper array for prematurely created contexts
-var contexts = new Array();
-var trace = Flashbug.trace;
-
-// Preference Helpers
-//-----------------------------------------------------------------------------
-
-// This functions are different in 1.05 and 1.2
-function getPref(prefDomain, name) {
-	if(Firebug.version == "1.05") return Firebug.getPref(name);
-	return Firebug.getPref(prefDomain, name);
-}
-Flashbug.getPref = getPref;
-
-function setPref(prefDomain, name, value) {
-	if(Firebug.version == "1.05") Firebug.setPref(name, value);
-	Firebug.setPref(prefDomain, name, value);
-}
-Flashbug.setPref = setPref;
-
-// Array Helpers
-//-----------------------------------------------------------------------------
-
-function cloneMap(map) {
-	var newMap = {};
-	for (var item in map) {
-		newMap[item] = map[item];
-	}
-	return newMap;
-};
-
-// Cache Helps
-//-----------------------------------------------------------------------------
-
-function getCacheKey(request) {
-	var is = request.QueryInterface(Ci.nsIUploadChannel).uploadStream;
-	
-	var ss = is.QueryInterface(Ci.nsISeekableStream);
-	ss.seek(NS_SEEK_SET, 0);
-	
-	var ch = Cc["@mozilla.org/security/hash;1"].createInstance(Ci.nsICryptoHash);
-	ch.init(ch.MD5);
-	ch.updateFromStream(ss, ss.available());
-	
-	return ch.finish(true);
-};
-
-function saveStream(stream, filename) {
-	try {
-		var dir = Cc["@mozilla.org/file/directory_service;1"].getService(Ci.nsIProperties);
-		var file = dir.get("Desk", Ci.nsIFile);
-		file.append("Flashbug");
-		file.append(filename);
-		file.createUnique(Ci.nsIFile.NORMAL_FILE_TYPE, 0777);
-		
-		var fos = Cc["@mozilla.org/network/safe-file-output-stream;1"].createInstance(Ci.nsIFileOutputStream);
-		fos.init(file, -1, 0777, 0); // write, create, truncate
-		
-		var bos = Cc["@mozilla.org/network/buffered-output-stream;1"].createInstance(Ci.nsIBufferedOutputStream);
-		bos.init(fos, 8192);
-		
-		/*var count = stream.available();
-		while(count > 0) {
-			count -= bos.writeFrom(stream, count);
-		}*/
-		for (var count = stream.available(); count; count = stream.available()) {
-			bos.writeFrom(stream, count);
-		}
-	} catch (e) {
-		ERROR(e);
-	} finally {
-		if (fos) {
-			if (fos instanceof Ci.nsISafeOutputStream) {
-				fos.finish();
-			} else {
-				fos.close();
-			}
-		}
-	}
-};
-
-function safeGetName(request) {
-	try {
-		return request.name;
-	} catch (e) {
-		return null;
-	}
-};
-
-function isAmfRequest(request) {
-	if (!request.contentType) return false;
-	var contentType = trim(request.contentType.split(";")[0]);
-	return "application/x-amf" == contentType;
-}
+const SWF_MIME = "application/x-shockwave-flash";
+const arrPattern = [
+	{ label:"xml", 				pattern:new RegExp("^(@@XML@@|@@HTML@@)[^<]*")},
+	{ label:"error", 			pattern:new RegExp("^(@@ERROR@@)\s*")},
+	{ label:"subError", 		pattern:/^\s*at/},
+	{ label:"nativeError", 		pattern:new RegExp("^Error\s+")},
+	{ label:"nativeError", 		pattern:new RegExp("^(Error|EvalError|RangeError|ReferenceError|SyntaxError|TypeError|URIError):\s*")}, // ECMAScript core Error classes
+	{ label:"nativeError", 		pattern:new RegExp("^(ArgumentError|SecurityError|VerifyError):\s*")}, // ActionScript core Error classes
+	{ label:"nativeError", 		pattern:new RegExp("^(EOFError|IllegalOperationerror|IOError|MemoryError|ScriptTimeoutError|StackOverflowError|DRMManagerError|SQLError|SQLErrorOperation|VideoError|InvalidSWFError):\s*")}, // flash.error package Error classes
+	{ label:"nativeError", 		pattern:new RegExp("^(AutomationError|CollectionViewError|Conflict|ConstraintError|CursorError|DataServiceError|DefinitionError|Fault|InvalidCategoryError|InvalidFilterError):\s*")}, // Flex package Error classes
+	{ label:"nativeError", 		pattern:new RegExp("^(ItemPendingError|MessagingError|NoDataAvailableError|PersistenceError|SortError|VideoError|SOAPFault):\s*")}, // Flex package Error classes pt2
+	{ label:"nativeError", 		pattern:new RegExp("^(PersistenceError|ProxyServiceError|SyncManagerError):\s*")}, // Coldfusion Error classes
+	{ label:"nativeError", 		pattern:/^\[RPC\sFault\s+/}, // Coldfusion Error Event
+	{ label:"nativeError", 		pattern:new RegExp("^(UnresolvedConflictsError):\s*")}, // LiveCycle Data Services Error classes
+	{ label:"sandboxError", 	pattern:/^\*{3}\sSecurity\sSandbox\sViolation\s\*{3}/},
+	{ label:"sandboxSubError",	pattern:new RegExp("^SecurityDomain\s*")},
+	{ label:"warning", 			pattern:new RegExp("^(@@WARNING@@|warning)\s*")},
+	{ label:"nativeWarning",	pattern:new RegExp("^(Warning):\s*")},
+	{ label:"info", 			pattern:new RegExp("^(@@INFO@@|Info|info):?\s*")}
+];
+const regexXMLStart = /^<(?!XML)([a-z][\w0-9-]*)>/i;
+const regexXMLEnd = /<\/(?!XML)([a-z][\w0-9-]*)>$/i;
+const regexXML = /^<(?!XML)([a-z][\w0-9-]*)>.*<\/(?!XML)([a-z][\w0-9-]*)>$/i;
 
 // Localization
 //-----------------------------------------------------------------------------
 
 // Extend string bundle with new strings for this extension.
 // This must be done yet before domplate definitions.
-if (Firebug.registerStringBundle) Firebug.registerStringBundle("chrome://flashbug/locale/flashbug.properties");
+Firebug.registerStringBundle("chrome://flashbug/locale/flashbug.properties");
 
-function $FL_STR(name) {
-	if (Firebug.registerStringBundle) return $STR(name);
-	
-	try {
-		return document.getElementById("strings_flashbug").getString(name);
-	} catch (e) {
-		trace("Flashbug::Missing translation for: " + name + "\n");
-	}
-	
-	// Use only the label after last dot.
-	var index = name.lastIndexOf(".");
-	if (index > 0) name = name.substr(index + 1);
-	return name;
-};
-Flashbug.$FL_STR = $FL_STR;
-
-function $FL_STRF(name, args) {
-	if (Firebug.registerStringBundle) return $STRF(name), args;
-	
-	try {
-		return document.getElementById("strings_flashbug").getFormattedString(name, args);
-	} catch (e) {
-		trace("Flashbug::Missing translation for: " + name + "\n");
-	}
-	
-	// Use only the label after last dot.
-	var index = name.lastIndexOf(".");
-	if (index > 0) name = name.substr(index + 1);
-	return name;
-};
-Flashbug.$FL_STRF = $FL_STRF;
-
-// Search Helpers
-//-----------------------------------------------------------------------------
-
-// If older version of Firebug
-if (typeof getElementsByClass == "undefined") {
-	function cloneArray(array, fn) {
-		var newArray = [];
-		if (fn) {
-			for (var i = 0; i < array.length; ++i) {
-				newArray.push(fn(array[i]));
-			}
-		} else {
-			for (var i = 0; i < array.length; ++i) {
-				newArray.push(array[i]);
-			}
-		}
-		
-		return newArray;
-	}
-
-	getElementsByClass = function(node, className) { // className, className, ...
-		function iteratorHelper(node, classNames, result) {
-			for (var child = node.firstChild; child; child = child.nextSibling) {
-				var args1 = cloneArray(classNames);
-				args1.unshift(child);
-				if (FBL.hasClass.apply(null, args1)) result.push(child);
-				iteratorHelper(child, classNames, result);
-			}
-		}
-		
-		var result = [];
-		var args = cloneArray(arguments);
-		args.shift();
-		iteratorHelper(node, args, result);
-		return result;
-	};
-}
-
-function onOpenTab(url) {
-	trace("Flashbug - onOpenTab");
-	gBrowser.selectedTab = gBrowser.addTab(url);
-}
-
-function onOpen(url) {
-	trace("Flashbug - onOpen");
-	var f = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsILocalFile);
-	f.initWithPath(url);
-	launchFile(f);
-}
-
-function launchFile(f) {
-	try {
-		f.launch();
-	} catch (ex) {
-		// if launch fails, try sending it through the system's external
-		var uri = Cc["@mozilla.org/network/io-service;1"].getService(Ci.nsIIOService).newFileURI(f);
-		var protocolSvc = Cc["@mozilla.org/uriloader/external-protocol-service;1"].getService(Ci.nsIExternalProtocolService);
-		protocolSvc.loadUrl(uri);
-	}
-}
-
-function onReveal(url) {
-	trace("Flashbug - onReveal");
-	var f = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsILocalFile);
-	f.initWithPath(url);
-	
-	try {
-		f.reveal();
-	} catch (ex) {
-		// If reveal fails for some reason (e.g., it's not implemented on unix or
-		// the file doesn't exist), try using the parent if we have it.
-		var parent = f.parent.QueryInterface(Ci.nsILocalFile);
-		if (!parent) return;
-		
-		// "Double click" the parent directory to show where the file should be
-		onOpen(parent.path);
-	}
-}
+var $FL_STR = Flashbug.$FL_STR,
+$FL_STRF = Flashbug.$FL_STRF;
 
 // Module Implementation
 //-----------------------------------------------------------------------------
 
-var BaseModule = Firebug.ActivableModule ? Firebug.ActivableModule : Firebug.Module;
+Firebug.FlashbugModel = extend(Firebug.ActivableModule, {
+	
+	//////////////////////////////////////////////////////////////////////////////////////////////
+	// Module                                                                                   //
+	//////////////////////////////////////////////////////////////////////////////////////////////
+	//{
+	/**
+	* Called by Firebug when Firefox window is opened.
+	*/
+	/*initialize: function() {
+	},*/
 
-Firebug.AMFInfoTab = extend(BaseModule, {
-	
-	amfReader: new Flashbug.AMF(),
-	
-    initialize: function() {
-        if(Firebug.NetMonitor.NetInfoBody.addListener) Firebug.NetMonitor.NetInfoBody.addListener(this);
-    },
-	
-    shutdown: function() {
-        if(Firebug.NetMonitor.NetInfoBody.removeListener) Firebug.NetMonitor.NetInfoBody.removeListener(this);
-    },
+	/**
+	* Called when the UI is ready for context creation.
+	* Used by chromebug; normally FrameProgressListener events trigger UI synchronization,
+	* this event allows sync without progress events.
+	*/
+	/*initializeUI: function(detachArgs) {
+	},*/
 
-    // Listener for NetInfoBody.
-    initTabBody: function(infoBox, file) {
-		if ((!file.requestAMF || !file.responseAMF) && isAmfRequest(file.request)) {
-			file.category = "html";
-			Firebug.NetMonitor.NetInfoBody.appendTab(infoBox, "AMFInfo", $FL_STR("flashbug.amfinfo.tab.title"));
-		}
-	},
-	
-    destroyTabBody: function(infoBox, file) {},
-	
-	toggle: {},
-	
-    updateTabBody: function(infoBox, file, context) {
-		// Get currently selected tab.
-		var tab = infoBox.selectedTab;
-		
-		// Generate content only for the first time; and only if our tab 
-		// has been just activated.
-		if (tab.dataPresented || !hasClass(tab, "netInfoAMFInfoTab")) return;
-		
-		// Make sure the content is generated just once.
-		tab.dataPresented = true;
-		
-		// Get body element associated with the tab.
-		var tabBody = getElementByClass(infoBox, "netInfoAMFInfoText");
-		file.category = "html";
-		
-		// Request
-		if(!file.requestAMF) {
-			try {
-				var is = file.request.QueryInterface(Ci.nsIUploadChannel).uploadStream;
-				if (is) {
-					var ss = is.QueryInterface(Ci.nsISeekableStream);
-					if (ss) ss.seek(NS_SEEK_SET, 0);
-					
-					// Read headers
-					var ba = new Flashbug.ByteArray(ss);
-					var line = ba.readString();
-					while(line) {
-						//trace("Got a request header: [" + line + "]");
-						/*var tmp = line.match(/^([^:]+):\s?(.*)/);
-						// match can return null...
-						if (tmp) {
-							postHeader(tmp[1], tmp[2]);
-						} else {
-							postHeader(line, "");
-						}*/
-						line = ba.readString();
-					}
-					
-					// Read data
-					file.requestAMF = this.amfReader.deserialize(ba);
-				}
-			} catch (e) {
-				ERROR(e);
-			}
-		}
-		
-		// Response
-		if(!file.responseAMF) {
-			try {
-				var is = file.responseStream;
-				if (is) {
-					var ss = is.QueryInterface(Ci.nsISeekableStream);
-					if (ss)  {
-						ss.seek(NS_SEEK_SET, 0);
-						
-						// Read headers
-						var ba = new Flashbug.ByteArray(ss);
-						
-						// Read data
-						file.responseAMF = this.amfReader.deserialize(ba);
-					}
-				}
-			} catch (e) {
-				ERROR(e);
-			}
-		}
-		
-		// Create container html
-		var tabBody = Firebug.FlashbugModel.AMFInfo.tag.replace({}, tabBody);
-		
-        // Generate UI using Domplate template (from HTML panel).
-		if(file.requestAMF) Firebug.DOMPanel.DirTable.tag.replace({object: file.requestAMF, toggles: this.toggles}, getChildByClass(tabBody, "flashbugAMFRequest"));
-        if(file.responseAMF) Firebug.DOMPanel.DirTable.tag.replace({object: file.responseAMF, toggles: this.toggles}, getChildByClass(tabBody, "flashbugAMFResponse"));
-	}
-});
+	/**
+	* Called by Firebug when Firefox window is closed.
+	*/
+	/*shutdown: function() {
+	},*/
 
-Firebug.FlashbugModel = extend(BaseModule, {
+	/**
+	* Called when a new context is created but before the page is loaded.
+	*/
+	/*initContext: function(context, persistedState) {
+	},*/
+
+	/**
+	* Called after a context is detached to a separate window;
+	*/
+	/*reattachContext: function(browser, context) {
+	},*/
+
+	/**
+	* Called when a context is destroyed. Module may store info on persistedState for reloaded pages.
+	*/
+	/*destroyContext: function(context, persistedState) {
+	},*/
+
+	/**
+	* Called when attaching to a window (top-level or frame).
+	*/
+	/*watchWindow: function(context, win) {
+	},*/
+
+	/**
+	* Called when unwatching a window (top-level or frame).
+	*/
+	/*unwatchWindow: function(context, win) {
+	},*/
+
+	// Called when a FF tab is create or activated (user changes FF tab)
+	// Called after context is created or with context == null (to abort?)
+	/*showContext: function(browser, context) {
+	},*/
+
+	/**
+	* Called after a context's page gets DOMContentLoaded
+	*/
+	/*loadedContext: function(context) {
+	},*/
+
+	/*
+	* After "onSelectingPanel", a panel has been selected but is not yet visible
+	*/
+	/*showPanel: function(browser, panel) {
+	},*/
+
+	/*showSidePanel: function(browser, sidePanel) {
+	},*/
+
+	// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+
+	/*updateOption: function(name, value) {
+	},*/
+
+	/*getObjectByURL: function(context, url) {
+	},*/
 	
-	panelName: panelName,
-	panel: null,
-	traceReader: null,
-	policyReader: null,
-	solReader: null,
-	selectedReader: null,
-	cacheListener: null,
-	netListener: null,
-	playerVersion: "",
-	jsPlayerVersion: "",
-	// Set to true if all hooks for monitoring cookies are registered; otherwise false.
-    observersRegistered: false,
+	// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+	// intermodule dependency
+
+	// caller needs module. win maybe context.window or iframe in context.window.
+	// true means module is ready now, else getting ready
+	/*isReadyElsePreparing: function(context, win) {
+	},*/
+	//}
+	//////////////////////////////////////////////////////////////////////////////////////////////
+	// ActivableModule                                                                          //
+	//////////////////////////////////////////////////////////////////////////////////////////////
+	//{
+	/**
+	* Every activable module is disabled by default waiting for on a panel
+	* that wants to have it enabled (and display provided data). The rule is
+	* if there is no panel (view) the module is disabled.
+	*/
+	//enabled: false,
+
+	/**
+	* List of observers (typically panels). If there is at least one observer registered
+	* The module becomes active.
+	*/
+	//observers: null,
+
+	/**
+	* List of dependent modules.
+	*/
+	//dependents: null,
+
+	/*initialize: function() {
+		Firebug.Module.initialize.apply(this, arguments);
+	},*/
+
+	// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+	// Observers (dependencies)
+
+	/*hasObservers: function() {
+		return this.observers ? this.observers.length > 0 : false;
+	},*/
+
+	/*addObserver: function(observer) {
+		if (!this.observers) this.observers = [];
+		
+		this.observers.push(observer);
+		this.onObserverChange(observer);  // not dispatched.
+	},*/
+
+	/*removeObserver: function(observer) {
+		if (!this.observers) return;
+		
+		remove(this.observers, observer);
+		this.onObserverChange(observer);  // not dispatched
+	},*/
+
+	/**
+	* This method is called if an observer (e.g. {@link Firebug.Panel}) is added or removed.
+	* The module should decide about activation/deactivation upon existence of at least one
+	* observer.
+	*/
+	/*onObserverChange: function(observer) {
+		if (FBTrace.DBG_WINDOWS) FBTrace.sysout("firebug.ActivableModule.onObserverChange;");
+	},*/
+
+	// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+	// Cross module dependencies.
+
+	/*addDependentModule: function(dependent) {
+		if (!this.dependents) this.dependents = [];
+		
+		this.dependents.push(dependent);
+		this.onDependentModuleChange(dependent);  // not dispatched.
+	},*/
+
+	/*removeDependentModule: function(dependent) {
+		if (!this.dependents) return;
+		
+		remove(this.dependents, dependent);
+		this.onDependentModuleChange(dependent);  // not dispatched
+	},*/
+
+	/*onDependentModuleChange: function(dependent) {
+		if (FBTrace.DBG_WINDOWS) FBTrace.sysout("onDependentModuleChange no-op for "+dependent.dispatchName);
+	},*/
+
+	// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+	// Firebug Activation
+
+	// Called before any suspend actions. Firest caller to return true aborts suspend.
+	/*onSuspendingFirebug: function() {
+	},*/
+
+	// When the number of activeContexts decreases to zero. Modules should remove listeners, disable function that takes resources
+	/*onSuspendFirebug: function() {
+	},*/
+
+	// When the number of activeContexts increases from zero. Modules should undo the work done in onSuspendFirebug
+	/*onResumeFirebug: function() {
+	},*/
+
+	// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+	// Module enable/disable APIs.
+
+	/*isEnabled: function() {
+		return this.hasObservers();
+	},*/
+
+	/*isAlwaysEnabled: function() {
+		return this.hasObservers();
+	}*/
+	//}
+	//////////////////////////////////////////////////////////////////////////////////////////////
+	// Flash Console Module                                                                     //
+	//////////////////////////////////////////////////////////////////////////////////////////////
 	
-	trace: function(msg) {
+	trace: function(msg, obj) {
 		msg = "Flashbug - Model::" + msg;
 		if (FBTrace.DBG_FLASH_MODEL) {
 			if (typeof FBTrace.sysout == "undefined") {
-				alert(msg);
+				Flashbug.alert(msg + " | " + obj);
 			} else {
-				FBTrace.sysout(msg);
+				FBTrace.sysout(msg, obj);
 			}
 		}
 	},
 	
-	//////////////////////
-	// Firebug Specific //
-	//////////////////////
+	/////////////////////////////
+	// Firebug Module Override //
+	/////////////////////////////
 	
 	// Called when the window is opened.
 	initialize: function() {
 		this.trace("initialize");
 		
-		this.panelName = panelName;
-		this.panel = FirebugContext ? FirebugContext.getPanel(panelName) : null;
-		this.description = $FL_STR("flashbug.modulemanager.description");
-		
-		// Add AMF as a cached content type
-		var cachedTypes = getPref(FirebugPrefDomain, "cache.mimeTypes");
-		if(cachedTypes && cachedTypes.indexOf("application/x-amf") == -1) {
-			if(cachedTypes.length > 0) {
-				cachedTypes += " ";
-			}
-			cachedTypes += "application/x-amf";
-			setPref(FirebugPrefDomain, "cache.mimeTypes", cachedTypes);
+		// Moved Cookie to seperate Panel, if Cookie was a selected Tab change it to Trace
+		if(Firebug.getPref(Firebug.prefDomain, "flashbug.defaultTab").toLowerCase() == "cookie") {
+			Firebug.setPref(Firebug.prefDomain, "flashbug.defaultTab", "trace");
 		}
+		//
 		
-		BaseModule.initialize.apply(this, arguments);
+		this.selectedReader = this.traceReader;
 		
-		if(Firebug.TabCacheModel) {
-			// Register cache listener
-			this.cacheListener = new CacheListener();
-			Firebug.TabCacheModel.addListener(this.cacheListener);
-			
-			// Register NetMonitor listener
-			this.netListener = new NetListener(this.cacheListener);
-			Firebug.NetMonitor.addListener(this.netListener);
-		}
-		
-		// All the necessary observers are registered by default. Even if the 
-        // panel can be disabled (entirely or for a specific host) there is
-        // no simple way to find out this now, as the context isn't available. 
-        // All will be unregistered again in the initContext (if necessary).
-        // There is no big overhead, the initContext is called just after the
-        // first document request.
-        this.registerObservers(null);
+		this.initMMFile(false);
 	},
+	
+	internationalizeUI: function(doc) {
+		this.trace("internationalizeUI");
+        var elements = ["flbClear", "flbOpen", "flashbugLogFilter-trace", "flashbugLogFilter-policy",  "fbFlashbugVersion", "fbFlashbugDownload", "flbVersion"];
+        var attributes = ["label", "tooltiptext", "value"];
+		
+		Flashbug.internationalizeElements(doc, elements, attributes);
+    },
 	
 	/**
      * Peforms clean up when Firebug is destroyed.
      * Called by the framework when Firebug is closed for an existing Firefox window.
      */
     shutdown: function() {
-		if(Firebug.TabCacheModel) {
-			// Unregister cache listener
-			Firebug.TabCacheModel.removeListener(this.cacheListener);
-			
-			// Unregister NetMonitor listener
-			Firebug.NetMonitor.removeListener(this.netListener);
-		}
-		
-        this.unregisterObservers(null);
+		//
     },
 	
-	// CSS helper
-    addStyleSheet: function(panel) {
-		this.trace("addStyleSheet");
-        // Make sure the stylesheet isn't appended twice. 
-        var doc = panel.document;
-        if ($("flashbugStyles", doc)) return;
-        
-        var styleSheet = createStyleSheet(doc, "chrome://flashbug/skin/flashbug.css");
-        styleSheet.setAttribute("id", "flashbugStyles");
-	    addStyleSheet(doc, styleSheet);
-    },
-	
-	//After "onSelectingPanel", a panel has been selected but is not yet visible
     showPanel: function(browser, panel) {
-		this.trace(" ");
-		this.trace(" ");
-		this.trace("showPanel() - " + panel.panelNode.id);
-		if(!this.activeContexts) this.activeContexts = [];
+		this.trace("showPanel " + panelName, panel);
 		
-		// For backward compatibility with Firebug 1.1, update panel's toolbar
         var isFlashPanel = panel && panel.name == panelName;
-		
-		// Firebug 1.4, chrome changes.
-        var chrome = browser.chrome ? browser.chrome : Firebug.chrome;
-		
-        var flashButtons = chrome.$("fbFlashbugButtons");
-        var flashVersion = chrome.$("fbFlashbugVersion");
-        collapse(flashButtons, !isFlashPanel);
-        collapse(flashVersion, !isFlashPanel);
+        collapse(Firebug.chrome.$("fbFlashbugButtons"), !isFlashPanel);
+        collapse(Firebug.chrome.$("fbFlashbugVersion"), !isFlashPanel);
 		
 		if (isFlashPanel) {
-			this.addStyleSheet(panel);
+			// Append CSS
+			var doc = panel.document;
+			if (!$("flashbugStyles", doc)) {
+				var styleSheet = createStyleSheet(doc, "chrome://flashbug/skin/flashbug.css");
+				styleSheet.setAttribute("id", "flashbugStyles");
+				addStyleSheet(doc, styleSheet);
+			}
 			
-			Firebug.FlashbugModel.traceReader.initContext(panel);
-			Firebug.FlashbugModel.policyReader.initContext(panel);
-			Firebug.FlashbugModel.solReader.initContext(panel, panel.context);
+			// File was corrupted or written improperly
+			if(Flashbug.getMMFile().fileSize == 0) this.initMMFile(true);
 			
-			this.selectLog(panel.context, getPref(FirebugPrefDomain, "flashbug.defaultTab"));
-		}
-		
-		if(Flashbug.getMMFile().fileSize == 0) this.initMMFile(true);
-		
-		//if(this.isEnabled(panel.context) && !this.selectedReader.paused) this.play();
-    },
-	
-	/**
-     * Support for ActivableModule
-     */
-    onPanelActivate: function(context, init, activatedPanelName) {
-        if (activatedPanelName != panelName) return;
-		this.trace("onPanelActivate() - " + panelName);
-		
-		this.registerObservers(context);
-		
-        // Make sure the panel is refreshed (no page reload)
-        context.invalidatePanels(panelName);
-		
-        // Make sure the toolbar is updated.
-        // xxxHonza: This should be done automatically by calling "panel.show mehtod",
-        // where the visibility of the toolbar is already managed.
-        // Why Firebug doesn't call show within Firebug.panelActivate?
-        var panel = context.getPanel(panelName, true);
-        if (panel) {
-			panel.showToolbarButtons("fbFlashbugButtons", true);
-			panel.showToolbarButtons("fbFlashbugVersion", true);
+			// Init Readers
+			if(!this.traceReader.divLog) this.traceReader.divLog = doc.createElement('div');
+			if(!this.policyReader.divLog) this.policyReader.divLog = doc.createElement('div');
+			
+			this.panel = panel;
+			
+			// Select Log to help init panel
+			this.onSelectLog(null, Firebug.getPref(Firebug.prefDomain, "flashbug.defaultTab"), panel);
+			this.displayValues();
 		}
     },
 	
-	onPanelDeactivate: function(context, destroy, activatedPanelName) {
-		this.unregisterObservers(context);
-    },
-	
-	// When the number of activeContexts decreases to zero. Modules should remove listeners, disable function that takes resources
-	onSuspendFirebug: function(context) {
-		this.trace("onSuspendFirebug");
+	/*onObserverChange: function(observer) {
+		this.trace("onObserverChange - this.hasObservers() " + this.hasObservers());
 		
-		this.onDisabled(context);
-    },
-	
-	// When the number of activeContexts increases from zero. Modules should undo the work done in onSuspendFirebug
-    onResumeFirebug: function(context) {
-		this.trace("onResumeFirebug");
-		this.onEnabled(context);
-    },
-	
-	getMenuLabel: function(option, location) {
-		this.trace("getMenuLabel");
-		var host = getURIHost(location);
-		
-        // In case of local files or system pages use this labels instead of host.
-        // xxxHonza: the panel should be automatically disabled for local files
-        // and system pages as there are no cookies associated.
-        // These options shouldn't be available at all.
-        if (isSystemURL(location.spec)) {
-            host = $FL_STR("flashbug.SystemPages");
-        } else if (!getURIHost(location)) {
-            host = $FL_STR("flashbug.LocalFiles");
-		}
-		
-        // Translate these two options in panel activable menu from flashbug.properties
-        switch (option) {
-			case "disable-site":
-				return $FL_STRF("flashbug.HostDisable", [host]);
-			case "enable-site":
-				return $FL_STRF("flashbug.HostEnable", [host]);
-        }
-		
-        return BaseModule.getMenuLabel.apply(this, arguments);
-    },
-	
-	isEnabled: function(context) {
-        // For backward compatibility with Firebug 1.1. ActivableModule has been introduced in Firebug 1.2.
-        if (!Firebug.ActivableModule) return true;
-        return BaseModule.isEnabled.apply(this, arguments);
-    },
-	
-	// called for each context at the end of enable
-    onEnabled: function(context) {
-		this.trace("onEnabled");
-		
-		if (context) {
-            // Firebug 1.3
-            this.registerObservers(context);
+        if (this.hasObservers()) {
+			this.selectedReader.onSelect();
         } else {
-            // Firebug 1.4 (context parameter doesn't exist since 1.4)
-            if (Firebug.FlashbugModel.isAlwaysEnabled()) TabWatcher.iterateContexts(Firebug.FlashbugModel.registerObservers);
+			this.policyReader.onDeselect();
+			this.traceReader.onDeselect();
         }
-		
-		if(this.selectedReader) this.selectedReader.onSelect();
-    },
-	
-	// called for each context at the end of disable
-    onDisabled: function(context) {
-		this.trace("onDisabled");
-		
-		if (context) {
-            // Firebug 1.3
-            this.unregisterObservers(context);
-        } else {
-            // Firebug 1.4 (context parameter doesn't exist since 1.4)
-            // Suspend only if enabled.
-            if (Firebug.FlashbugModel.isAlwaysEnabled()) TabWatcher.iterateContexts(Firebug.FlashbugModel.unregisterObservers);
-        }
-		
-		if(this.policyReader) this.policyReader.onDeselect();
-		if(this.traceReader) this.traceReader.onDeselect();
-		if(this.solReader) this.solReader.onDeselect();
-		
-		// For some reason this isn't called til user interacts with webpage Firebug 1.4
-		if(context) {
-			var panel = context.getPanel(panelName, true);
-			if(panel) panel.hide();
-		}
-    },
-	
-	// Helper context
-    initTempContext: function(tempContext) {
-		this.trace("initTempContext");
-		//tempContext.cookieTempObserver = registerCookieObserver(new CookieTempObserver(tempContext));
-		
-        // Create sub-context for domains.
-        tempContext.solDomains = {};
-    },
-
-    destroyTempContext: function(tempContext, context) {
-        if (!tempContext) return;
-		this.trace("destroyTempContext");
-		
-        // Copy all active hosts on the page. In case of redirects or embedded IFrames, there
-        // can be more hosts (domains) involved on the page. Cookies must be displayed for
-        // all of them.
-        context.solDomains = cloneMap(tempContext.solDomains);
-		
-        delete tempContext.solDomains;
-		
-        // Unregister temporary cookie observer.
-        //tempContext.cookieTempObserver = unregisterCookieObserver(tempContext.cookieTempObserver);
-    },
-	
-	// Called when a new context is created but before the page is loaded.
-	initContext: function(context, persistedState) {
-		this.trace("initContext");
-		
-		var tabId = getTabIdForWindow(context.window);
-		this.panel = context.getPanel(panelName);
-		
-		// Create sub-context for solDomains. 
-        // xxxHonza: the solDomains object exists within the context even if 
-        // the panel is disabled.
-        context.solDomains = {};
-		
-		// The temp context isn't created e.g. for empty tabs, chrome pages.
-        var tempContext = contexts[tabId];
-        if (tempContext) {
-            this.destroyTempContext(tempContext, context);
-            delete contexts[tabId];
-        }
-		
-		BaseModule.initContext.apply(this, arguments);
-		
-		// Unregister all observers if the panel is disabled.
-        if (!this.isEnabled(context)) this.unregisterObservers(context);
-		
-		this.initMMFile(false);
-    },
-	
-	destroyContext: function(context) {
-		this.trace("destroyContext");
-        BaseModule.destroyContext.apply(this, arguments);
-		
-        delete context.solDomains;
-    },
-	
-	// Called when a FF tab is create or activated (user changes FF tab)
-    // Called after context is created or with context == null (to abort?)
-	/*showContext: function(browser, context) {
-		this.trace("showContext");
-        BaseModule.showContext.apply(this, arguments);
-		this.refresh(context);
     },*/
 	
-	///////////////////////
-	// Flashbug Specific //
-	///////////////////////
+	// Called when a new context is created but before the page is loaded.
+	/*initContext: function(context, persistedState) {
+		this.trace("initContext");
+		
+    },*/
 	
-	registerObservers: function(context) {
-		if (this.observersRegistered) return;
-		trace("Flashbug - Model::registerObservers"); // For some reason it can't find this.trace
-		
-		observerService.addObserver(HttpObserver, "http-on-modify-request", false);
-		observerService.addObserver(HttpObserver, "http-on-examine-response", false);
-		
-		this.observersRegistered = true;
-    },
+	////////////////////////////
+	// Flash Console Specific //
+	////////////////////////////
+	
+	defTimeout: 50,
+	timeout: 50,
+	readTimer: CCIN('@mozilla.org/timer;1', 'nsITimer'),
+	traceReader: {name:"Trace", divLog:null, paused:false, lastModifiedTime:null, fileSize:-1, arrText:[], arrTextDiff:[], arrTextPrevLength:0},
+	policyReader: {name:"Policy", divLog:null, paused:false, lastModifiedTime:null, fileSize:-1, arrText:[], arrTextDiff:[], arrTextPrevLength:0},
+	selectedReader: null,
+	playerVersion: "",
+	jsPlayerVersion: "",
+	description: $FL_STR("flashbug.logPanel.description"),
+	dispatchName: "Flash Console",
+	panel:null, 
 
-    unregisterObservers: function(context) {
-		if (!this.observersRegistered) return;
-		this.trace("unregisterObservers");
+	onClear: function(context) {
+		this.trace("onClear");
 		
-		observerService.removeObserver(HttpObserver, "http-on-modify-request");
-		observerService.removeObserver(HttpObserver, "http-on-examine-response");
+		var panel = context.getPanel(panelName, true);
 		
-		this.observersRegistered = false;
-    },
-	
-	clear: function(context) {
-		this.trace("clear");
-		this.selectedReader.clear();
-    },
-	
-	openFile: function(context) {
+		// Flush File
 		var file = this.selectedReader.name == "Trace" ? Flashbug.getLogFile() : Flashbug.getPolicyFile();
-		this.trace("openFile: " + file.path);
-		launchFile(file);
+		var result = Flashbug.writeFile(file);
+		if(result != true) Flashbug.alert($FL_STR("flashbug.logPanel.error.flush"), $FL_STR('flashbug.logPanel.error.title'));
+		
+		// Invalidate
+		this.selectedReader.lastModifiedTime = null;
+		this.selectedReader.fileSize = -1;
+		this.selectedReader.arrTextDiff = [];
+		this.selectedReader.arrTextPrevLength = 0;
+		
+		if(panel) {
+			this.selectedReader.divLog = panel.document.createElement('div');
+			clearNode(panel.selectedNode);
+			panel.refresh();
+		}
+    },
+	
+	onPause: function(context, panel) {
+		this.trace("onPause");
+		
+		this.selectedReader.paused = true;
+		this.readTimer.cancel();
 	},
 	
-	reparse: function(context) {
-		this.trace("reparse");
-		if(this.solReader) {
-			this.solReader.refresh();
-		}
+	onPlay: function(context, panel) {
+		this.trace("onPlay");
+		
+		// Play if 
+		this.selectedReader.paused = false;
+		this.readTimer.cancel();
+		var t = this;
+		this.readTimer.initWithCallback({ notify:function(timer) { t.readFile(); } }, this.timeout, Ci.nsITimer.TYPE_ONE_SHOT);
 	},
+	
+	onOpen: function(context) {
+		var file = this.selectedReader.name == "Trace" ? Flashbug.getLogFile() : Flashbug.getPolicyFile();
+		this.trace("onOpen: " + file.path);
+		Flashbug.launchFile(file);
+	},
+	
+	onSelectLog: function(context, view, panel) {
+		//this.trace("onSelectLog - " + view);
+		Firebug.setPref(Firebug.prefDomain, "flashbug.defaultTab", view.toLowerCase());
+		
+		this.selectedReader = this[Firebug.getPref(Firebug.prefDomain, "flashbug.defaultTab") + "Reader"];
+		
+		// Quick display file data
+		this.readFile();
+		this.displayValues();
+		
+		// Pause/Play
+		if(this.selectedReader.paused) {
+			this.onPause(context);
+		} else {
+			this.onPlay(context);
+		}
+		
+		var panel = panel ? panel : context.getPanel(panelName, true);
+		if(panel) {
+			panel.showLog();
+			panel.refresh();
+		}
+    },
 	
 	initMMFile: function(force) {
 		this.trace("initMMFile");
-		var mm_exists = true;
+		var mm_exists = true,
+			alertTimer = CCIN('@mozilla.org/timer;1', 'nsITimer');
 		if(Flashbug.getMMFile().fileSize == 0 || force) {
 			if(Flashbug.getMMDirectory().isWritable()) {
-				var valEnableErrors = getPref(FirebugPrefDomain, "flashbug.enableErrors") ? 1 : 0;
-				var valEnablePolicy = getPref(FirebugPrefDomain, "flashbug.enablePolicy") ? 1 : 0;
-				var valEnablePolicyAppend = getPref(FirebugPrefDomain, "flashbug.enablePolicyAppend") ? 1 : 0;
-				var valEnableOuputBuff = getPref(FirebugPrefDomain, "flashbug.traceOutputBuffered") ? 1 : 0;
-				var valEnableVerbose = getPref(FirebugPrefDomain, "flashbug.aS3Verbose") ? 1 : 0;
-				var valEnableTrace = getPref(FirebugPrefDomain, "flashbug.aS3Trace") ? 1 : 0;
-				var valEnableStatic = getPref(FirebugPrefDomain, "flashbug.aS3StaticProfile") ? 1 : 0;
-				var valEnableDynamic = getPref(FirebugPrefDomain, "flashbug.aS3DynamicProfile") ? 1 : 0;
-				var result = Flashbug.saveMMFile(valEnableErrors, getPref(FirebugPrefDomain, "flashbug.maxWarnings"), valEnablePolicy, valEnablePolicyAppend, valEnableOuputBuff, valEnableVerbose, valEnableTrace, valEnableStatic, valEnableDynamic);
+				var valEnableErrors = Firebug.getPref(Firebug.prefDomain, "flashbug.enableErrors") ? 1 : 0;
+				var valEnablePolicy = Firebug.getPref(Firebug.prefDomain, "flashbug.enablePolicy") ? 1 : 0;
+				var valEnablePolicyAppend = Firebug.getPref(Firebug.prefDomain, "flashbug.enablePolicyAppend") ? 1 : 0;
+				var valEnableOuputBuff = Firebug.getPref(Firebug.prefDomain, "flashbug.traceOutputBuffered") ? 1 : 0;
+				var valEnableVerbose = Firebug.getPref(Firebug.prefDomain, "flashbug.aS3Verbose") ? 1 : 0;
+				var valEnableTrace = Firebug.getPref(Firebug.prefDomain, "flashbug.aS3Trace") ? 1 : 0;
+				var valEnableStatic = Firebug.getPref(Firebug.prefDomain, "flashbug.aS3StaticProfile") ? 1 : 0;
+				var valEnableDynamic = Firebug.getPref(Firebug.prefDomain, "flashbug.aS3DynamicProfile") ? 1 : 0;
+				var result = Flashbug.saveMMFile(valEnableErrors, Firebug.getPref(Firebug.prefDomain, "flashbug.maxWarnings"), valEnablePolicy, valEnablePolicyAppend, valEnableOuputBuff, valEnableVerbose, valEnableTrace, valEnableStatic, valEnableDynamic);
 				if(result != true) {
 					this.trace("initMMFile: " + result);
 					// Cannot create the Flash Player Debugger config (mm.cfg) file in
-					alert($FL_STR("flashbug.mmError") + Flashbug.getMMFile().path);
+					alertTimer.initWithCallback({ notify:function(timer) { Flashbug.alert($FL_STR("flashbug.logPanel.error.mm") + Flashbug.getMMFile().path); } }, 1000, Ci.nsITimer.TYPE_ONE_SHOT);
 					mm_exists = false;
 				} else {
 					mm_exists = true;
 					// Flash Player Debugger config (mm.cfg) file created for the first time.
-					alert($FL_STR("flashbug.mmCreate"));
+					alertTimer.initWithCallback({ notify:function(timer) { Flashbug.alert($FL_STR("flashbug.logPanel.mmCreate")); } }, 1000, Ci.nsITimer.TYPE_ONE_SHOT);
 				}
 			} else {
 				// is not writeable, please check permissions
-				alert(Flashbug.getMMDirectory().path + $FL_STR("flashbug.writeError"));
+				alertTimer.initWithCallback({ notify:function(timer) { Flashbug.alert(Flashbug.getMMDirectory().path + $FL_STR("flashbug.logPanel.error.write")); } }, 1000, Ci.nsITimer.TYPE_ONE_SHOT);
 				mm_exists = false;
 			}
 		}
 		
 		if(!mm_exists) {
-			this.refresh();
-			this.pause();
 			//Flash Player Debugger config (mm.cfg) file does not exist
-			alert($FL_STR("flashbug.mmError2"));
+			alertTimer.initWithCallback({ notify:function(timer) { Flashbug.alert($FL_STR("flashbug.logPanel.error.mm2")); } }, 1000, Ci.nsITimer.TYPE_ONE_SHOT);
+		}
+		
+		// Update settings based on whats actually in the mm.cfg file
+		var settings = Flashbug.readMMFile();
+		for (var prop in settings) {
+			Firebug.setPref(Firebug.prefDomain, 'flashbug.' + prop, settings[prop]);
 		}
 	},
 	
-	pause: function(context) {
-		this.trace("pause");
-		this.selectedReader.pause();
+	readFile: function() {
+		//this.trace("readFile " + this.selectedReader.name, this);
 		
-		var panel = context.getPanel(panelName, true);
-		if(panel) panel.refreshChrome();
-	},
-	
-	play: function(context) {
-		this.trace("play");
-		this.selectedReader.play();
-		
-		var panel = context.getPanel(panelName, true);
-		if(panel) panel.refreshChrome();
-	},
-	
-	refresh: function(context) {
-		this.trace("refresh");
-		this.traceReader.synchronize();
-		this.policyReader.synchronize();
-		this.solReader.refresh();
-	},
-	
-	selectLog: function(context, view) {
-		this.trace("selectLog() - " + view);
-		setPref(FirebugPrefDomain, "flashbug.defaultTab", view);
-		
-		if(view == "Trace") {
-			this.selectedReader = this.traceReader;
-			this.traceReader.onSelect();
-			this.policyReader.onDeselect();
-			this.solReader.onDeselect();
-		} else if(view == "Policy") {
-			this.selectedReader = this.policyReader;
-			this.traceReader.onDeselect();
-			this.policyReader.onSelect();
-			this.solReader.onDeselect();
-		} else {
-			this.selectedReader = this.solReader;
-			this.traceReader.onDeselect();
-			this.policyReader.onDeselect();
-			this.solReader.onSelect();
-		}
-		
-		var panel = context.getPanel(panelName, true);
-		if(panel) panel.selectLog();
-    }
-});
-
-function TempContext(tabId) {
-    this.tabId = tabId;
-}
-
-var HttpObserver = {
-	
-	QueryInterface: function(aIID) {
-        if (aIID.equals(Ci.nsIObserver) || aIID.equals(Ci.nsISupportsWeakReference) || aIID.equals(Ci.nsISupports)) {
-            return this;
-        }
-		
-        throw Components.results.NS_NOINTERFACE;
-    },
-
-	observe: function(aSubject, aTopic, aData) {
+		// Read the file
+		var cis = CCIN("@mozilla.org/intl/converter-input-stream;1", "nsIConverterInputStream");
+		var hasmore;
+		var line = {};
+		var modified = false;
+		var file = this.selectedReader.name == "Trace" ? Flashbug.getLogFile() : Flashbug.getPolicyFile();
 		try {
-			aSubject = aSubject.QueryInterface(Ci.nsIHttpChannel);
-			if (aTopic == "http-on-modify-request") {
-				this.onModifyRequest(aSubject);
-			} else if (aTopic == "http-on-examine-response") {
-				this.onExamineResponse(aSubject);
+			// If file has changed since last read
+			if(this.selectedReader.lastModifiedTime != file.lastModifiedTime || this.selectedReader.fileSize != file.fileSize) {		
+				modified = true;
+				this.selectedReader.arrText = [];
+				this.selectedReader.lastModifiedTime = file.lastModifiedTime;
+				this.selectedReader.fileSize = file.fileSize;
+				
+				// Read File
+				var fis = CCIN("@mozilla.org/network/file-input-stream;1", "nsIFileInputStream");
+				fis.init(file, 0x01, 00004, null);
+				cis.init(fis, Firebug.getPref(Firebug.prefDomain, "flashbug.charSet"), 1024, Ci.nsIConverterInputStream.DEFAULT_REPLACEMENT_CHARACTER);
+				if(cis instanceof Ci.nsIUnicharLineInputStream) {
+					var firstLine = true;
+					do {
+						hasmore = cis.readLine(line);
+						if(firstLine && line.value == "") continue;
+						this.selectedReader.arrText.push(line.value);
+						firstLine = false;
+					} while (hasmore);
+					
+					cis.close();
+				}
+				fis.close();
 			}
 		} catch(e) {
-			ERROR(e);
+			// maybe select tab?
+			Flashbug.alert($FL_STR("flashbug.logPanel.error.read") + e);
+			this.selectedReader.paused = true;
+		}
+		
+		this.trace("read file modified:" + modified + " PrevLength:" + this.selectedReader.arrTextPrevLength + " NewLength:" + this.selectedReader.arrText.length);
+		
+		this.selectedReader.arrTextDiff = (this.selectedReader.arrTextPrevLength > 0) ? this.selectedReader.arrText.slice(this.selectedReader.arrTextPrevLength) : this.selectedReader.arrText.slice();
+		//this.trace("read file diff", this.selectedReader.arrTextDiff);
+		this.selectedReader.arrTextPrevLength = this.selectedReader.arrText.length;
+		
+		// Display contents
+		if(modified) this.displayValues();
+		
+		// If playing
+		this.readTimer.cancel();
+		if(!this.selectedReader.paused) {
+			this.timeout = modified ? this.defTimeout : 1000;
+			var t = this;
+			this.readTimer.initWithCallback({ notify:function(timer) { t.readFile(); } }, this.timeout, Ci.nsITimer.TYPE_ONE_SHOT);
 		}
 	},
 	
-	onModifyRequest: function(request) {
-		var name = request.URI.asciiSpec; // asciiSpec / spec
-		var origName = request.originalURI.asciiSpec; // asciiSpec / spec
-		var tabId = getTabIdForRequest(request);
-		var win = getWindowForRequest(request);
+	displayValues: function() {
+		if(!this.panel) return;
 		
-		// Firebus's natures is to display information for a tab. So, if there
-		// is no tab associated then end.
-		if (!tabId) return;
+		this.trace("displayValues " + this.selectedReader.name, this);
 		
-		// At this moment (specified by all the conditions) FB context doesn't exists yet.
-        // But the page already started loading and there are things to monitor.
-        // This is why the temporary context is created. It's used as a place where to 
-        // store information (cookie events and hosts). All this info will be copied into
-        // the real FB context when it's created (see initContext).
-        if ((request.loadFlags & Ci.nsIHttpChannel.LOAD_DOCUMENT_URI) && (request.loadGroup && request.loadGroup.groupObserver) && (name == origName) && (win == win.parent)) {
-			// Create temporary context
-			if (!contexts[tabId]) {
-				var tempContext = new TempContext(tabId);
-				contexts[tabId] = tempContext;
-				
-				Firebug.FlashbugModel.initTempContext(tempContext);
-			}
+		var text = '', 
+		startElement = null,
+		matchResult = {label:''}, 
+		hasChanged = false,
+		maxLines = Firebug.getPref(Firebug.prefDomain, 'flashbug.maxLines'),
+		i = 0, 
+		l = this.selectedReader.arrTextDiff.length, 
+		className = '',
+		docFrag = this.panel.document.createDocumentFragment(),
+		strXML = '';
+		
+		// Copied from XMLViewer // 
+		// Override getHidden in these templates. The parsed XML documen is
+        // hidden, but we want to display it using 'visible' styling.
+        var templates = [
+            Firebug.HTMLPanel.CompleteElement,
+            Firebug.HTMLPanel.Element,
+            Firebug.HTMLPanel.TextElement,
+            Firebug.HTMLPanel.EmptyElement,
+            Firebug.HTMLPanel.XEmptyElement,
+        ];
+		
+        var originals = [];
+        for (var i = 0; i < templates.length; i++) {
+            originals[i] = templates[i].getHidden;
+            templates[i].getHidden = function() { return ''; }
         }
-		
-        // Use the temporary context first, if it exists. There could be an old
-        // context (associated with this tab) for the previous URL.
-        var context = contexts[tabId];
-        context = context ? context : TabWatcher.getContextByWindow(win);
-		
-        // The context doesn't have to exist due to the activation support.
-        if (!context) return;
-		
-		this.addDomain(context, request, name);
-    },
-
-	onExamineResponse: function(request) {
-		var tabId = getTabIdForRequest(request);
-		if (!tabId) return;
-		
-		// Try to get the context from the contexts array first. The TabWatacher
-        // could return context for the previous page in this tab.
-        var context = contexts[tabId];
-        var win = getWindowForRequest(request);
-        context = context ? context : TabWatcher.getContextByWindow(win);
-		
-        // The context doesn't have to exist due to the activation support.
-        if (!context) return;
-		
-		this.addDomain(context, request, request.URI.asciiSpec);
-	},
-	
-	addDomain: function(context, request, href) {
-		var domain = getPrettyDomain(href);
-		var fullDomain = getDomain(href);
-		
-		// Fix domains with ports
-		var portIndex = domain.lastIndexOf(":");
-		if (portIndex != -1) domain = domain.slice(0, portIndex);
-		
-		// Fix localhost
-		if (domain == "localhost") domain = "#" + domain;
-		
-		// For some reason some shared objects aren't saved to the domain, but the basedomain
-		// Maybe for old swfs? The example is Flash 6
-		// i.e. http://netticat.ath.cx/BetterPrivacy/BetterPrivacy.htm
-		var arrDomain = domain.split(".");
-		while(arrDomain.length > 2) {
-			arrDomain.shift();
-		}
-		var baseDomain = arrDomain.join(".");
-		
-		// Get MIME Type
-		var mimeType = null;
-		try {
-			mimeType = request.contentType;
-		} catch(e) { }
-		if (!mimeType && getFileExtension(href) == "swf") mimeType = "application/x-shockwave-flash";
-		
-		// If is a SWF, add domain(s)
-		if(mimeType == "application/x-shockwave-flash") {
-			var hasAdded = false;
-			if (!context.solDomains[domain]) {
-				context.solDomains[domain] = domain;
-				hasAdded = true;
-				trace("Flashbug - HttpObserver::addDomain: " + context.solDomains[domain]);
-			}
+		//
+		//this.trace("displayValues2 " + i + ' length:' + l, this);
+		i = 0;
+		while (i < l) {
+			text = this.selectedReader.arrTextDiff[i];
 			
-			if (!context.solDomains[fullDomain]) {
-				context.solDomains[fullDomain] = fullDomain;
-				hasAdded = true;
-				trace("Flashbug - HttpObserver::addDomain: " + context.solDomains[fullDomain]);
-			}
+			// Remove double spaces from AIR
+			// BUG: Doesn't work, but works in Flex
+			//text = text.replace(/\x0D$/gm, '');
 			
-			if (!context.solDomains[baseDomain]) {
-				context.solDomains[baseDomain] = baseDomain;
-				hasAdded = true;
-				trace("Flashbug - HttpObserver::addDomain: " + context.solDomains[baseDomain]);
-			}
+			i++;
 			
-			// Refresh the panel asynchronously.
-			if(hasAdded && context instanceof Firebug.TabContext) context.invalidatePanels(panelName); 
-		}
-	}
-};
-
-//	Tab Cache Listener
-//-----------------------------------------------------------------------------
-
-function CacheListener() {
-	this.cache = {};
-	this.shouldCacheRequest = function(request) {
-		return isAmfRequest(request);
-	};
-};
-
-CacheListener.prototype = {
-	responses: [],
-	
-	getResponse: function(request, cacheKey) {
-		if (!cacheKey) cacheKey = getCacheKey(request);
-		
-		if (!cacheKey) return;
-		
-		var response = this.responses[cacheKey];
-		if (!response) {
-			this.invalidate(cacheKey);
-			this.responses[cacheKey] = response = {
-				request: request,
-				size: 0
-			};
-		}
-		
-		return response;
-	},
-	
-	getResponseStreamFromCache: function(cacheKey) {
-		try {
-			return this.cache[cacheKey].storageStream.newInputStream(0);
-		} catch (e) {
-			return null;
-		}
-	},
-	
-	invalidate: function(cacheKey) {		
-		delete this.cache[cacheKey];
-	},
-	
-	onStartRequest: function(context, request, requestContext) {
-		if (isAmfRequest(request)) this.getResponse(request);
-	},
-	
-	onDataAvailable: function(context, request, requestContext, inputStream, offset, count)	{
-		if (isAmfRequest(request)) {
-			try {
-				var cacheKey = getCacheKey(request);
+			// Limit lines drawn
+			//this.trace("displayValues3 " + i + ' maxLines:' + maxLines, this);
+			if(i > maxLines && maxLines > 0) break;
+			
+			hasChanged = true;
+			
+			// Concact initial multiline xml strings
+			if(text.match(/^@@XML@@\s*</gm) && strXML == '') {
+				text = text.replace(arrPattern[0].pattern, '');
+				var xmlElement = regexXML.exec(text);
+				startElement = null;
 				
-				if (!cacheKey) return;
-				
-				if (!this.cache[cacheKey]) {
-					this.cache[cacheKey] = {
-						storageStream: Cc["@mozilla.org/storagestream;1"].createInstance(Ci.nsIStorageStream),
-						outputStream: Cc["@mozilla.org/binaryoutputstream;1"].createInstance(Ci.nsIBinaryOutputStream)
-					};
-					
-					this.cache[cacheKey].storageStream.init(8192, PR_UINT32_MAX, null);
-					this.cache[cacheKey].outputStream.setOutputStream(this.cache[cacheKey].storageStream.getOutputStream(0));
+				// Is this a single xml line?
+				if (xmlElement[2] == xmlElement[1]) {
+					// Yup, handle it like a single
+				} else {
+					startElement = xmlElement[1];
+					strXML += text;
+					continue;
 				}
+			}
+			
+			// Concat multiline xml strings 
+			if(text.match(/^\s*</gm) && strXML != '') {
+				strXML += text;
 				
-				var binaryInputStream = Cc["@mozilla.org/binaryinputstream;1"].createInstance(Ci.nsIBinaryInputStream);
-				binaryInputStream.setInputStream(inputStream.value);
+				// If this is the last line and we're still reading XML, assume this is the end
+				if(i == l) {
+					startElement = null;
+					text = strXML;
+					text = text.replace(/>[\s\t\r\n]*</g, '><');
+					strXML = '';
+				} else {
+					var endElement = regexXMLEnd.exec(text);
+					if (endElement && endElement[1] == startElement) {
+						// End of multiline xml
+						startElement = null;
+						text = strXML;
+						text = text.replace(/>[\s\t\r\n]*</g, '><');
+						strXML = '';
+					} else {
+						continue;
+					}
+				}
+			}
+			
+			// Concat multiline xml strings, blank string (AIR app)
+			else if(strXML != '' && text.length == 0) {
+				continue;
+			}
+			
+			// End of xml, backtrack and handle as normal
+			else if(strXML != '') {
+				--i;
+				startElement = null;
+				text = strXML;
+				text = text.replace(/>[\s\t\r\n]*</g, '><');
+				strXML = '';
+			}
+			
+			// Grab pattern that matches trace
+			matchResult = this.matchPattern(text);
+			
+			className = 'flb-trace-row';
+			switch(matchResult.label) {
+				case 'error' :
+					text = text.replace(matchResult.pattern, '');
+				case 'nativeError' :
+				case 'sandboxError' :
+					className += ' flb-trace-row-error-icon';
+				case 'subError' :
+				case 'sandboxSubError' :
+					className += ' flb-trace-row-error';
+					break;
+				case 'warning' :
+					text = text.replace(matchResult.pattern, '');
+				case 'nativeWarning' :
+					className += ' flb-trace-row-warning';
+					break;
+				case 'info' :
+					className += ' flb-trace-row-info';
+					text = text.replace(matchResult.pattern, '');
+					break; 
+				case 'xml' :
+					text = text.replace(matchResult.pattern, '');
+					break; 
+			}
+			
+			var div = this.panel.document.createElement('div');
+			
+			// Auto parse JSON
+			try {
+				//this.trace('[:' + text.indexOf('[') + ' {:' + text.indexOf('{'));
+				if (text.indexOf('[') != 0 && text.indexOf('{') != 0) throw 'Simple data, just display 1';
 				
-				var listenerStorageStream = Cc["@mozilla.org/storagestream;1"].createInstance(Ci.nsIStorageStream);
-				listenerStorageStream.init(8192, count, null);
-				
-				var listenerOutputStream = Cc["@mozilla.org/binaryoutputstream;1"].createInstance(Ci.nsIBinaryOutputStream);
-				listenerOutputStream.setOutputStream(listenerStorageStream.getOutputStream(0));
-				
-				var data = binaryInputStream.readByteArray(count);
-				listenerOutputStream.writeByteArray(data, count);
-				this.cache[cacheKey].outputStream.writeByteArray(data, count);
-				
-				var response = this.getResponse(request, cacheKey);
-				response.size += count;
-				
-				// Let other listeners use the stream.
-				inputStream.value = listenerStorageStream.newInputStream(0);
-			} catch (e) {
-				ERROR(e);
+				text = JSON.parse(text);
+				Firebug.DOMPanel.DirTable.tag.replace({object: text, toggles: {}}, div);
+				//Firebug.DOMPanel.DirTable.tag.replace({object: text}, div);
+				div.setAttribute('class', 'flb-trace-row');
+			} catch(err) {
+				// Auto parse XML
+				//if (text.indexOf('<') == 0) {
+				if (text.match(regexXMLStart) != null) {
+					// Parse response and create DOM.
+					var parser = CCIN('@mozilla.org/xmlextras/domparser;1', 'nsIDOMParser');
+					var doc = parser.parseFromString(text, 'text/xml');
+					var root = doc.documentElement;
+					
+					// Error handling
+					var nsURI = 'http://www.mozilla.org/newlayout/xml/parsererror.xml';
+					if (root.namespaceURI == nsURI && root.nodeName == 'parsererror') {
+						this.trace('xml error - "' + text + '"');
+						Firebug.FlashbugModel.XMLError.tag.replace({error: {
+						message: root.firstChild.nodeValue + ' [' + text + ']',
+						source: root.lastChild.textContent
+						}}, div);
+					} else {
+						this.trace('xml - "' + text + '"', root);
+						Firebug.HTMLPanel.CompleteElement.tag.replace({object: root}, div);
+						div.setAttribute('class', 'flb-trace-row');
+					}
+				} else {
+					
+					// Grab URLs
+					// New
+					text = text.replace('<', '&lt;', 'g');
+					text = text.replace('>', '&gt;', 'g');
+					text = text.replace('&quot;', '"', 'g');
+					text = text.replace(/(\s*)((\w+:\/\/)([-\w\.]+)+(:\d+)?(\/([\w/_\-\.]*(\?[^\s"]+)?)?)?)/ig, "$1<span title='$2' class='flb-link' >$2</span>");
+					
+					// Old - was reading the & in &lt; and breaking the link
+					//text = text.replace(/(\s*)((\w+:\/\/)[-a-zA-Z0-9:@;?&=\/%\+\.\*!'\(\),\$_\{\}\^~\[\]`#|]+)/ig, "$1<span title='$2' class='flb-link' >$2</span>");
+					//this.trace('normal - "' + text + '"');
+					div.innerHTML = text;
+					div.setAttribute('class', className);
+				}
+			}
+			
+			//this.trace("displayValues4 append", div);
+			docFrag.appendChild(div);
+		}
+		
+		// Copied from XMLViewer // 
+		for (var i=0; i<originals.length; i++) {
+            templates[i].getHidden = originals[i];
+		}
+		//
+		
+		//this.trace("displayValues5 docFrag", docFrag);
+		
+		// Add rows
+		if(hasChanged) {
+			this.selectedReader.divLog.appendChild(docFrag);
+			
+			// If node is displayed & Auto scroll
+			if(Firebug.getPref(Firebug.prefDomain, "flashbug.autoScroll")) {
+				this.panel.refresh();
 			}
 		}
+		
+		// Prevent pause/play from adding the same content
+		this.selectedReader.arrTextDiff = [];
 	},
 	
-	onStopRequest: function(context, request, requestContext, statusCode) {
-		if (isAmfRequest(request)) {
-			var cacheKey = getCacheKey(request);
-			delete this.responses[request];
-			
-			// Should save?
-			if (getPref(FirebugPrefDomain, "flashbug.saveResponses")) {
-				saveStream(this.cache[cacheKey].storageStream.newInputStream(0), cacheKey.replace(/\W/g,"") + ".amf");
+	matchPattern: function(line) {
+		//this.trace('matchPattern');
+		var i = arrPattern.length, pattern;
+		while (i--) {
+			pattern = arrPattern[i];
+			try {
+				//trace(line + ' : ' + pattern['pattern'] + ' : ' + line.match(pattern['pattern']));
+				if(line.match(pattern['pattern']) != null) {
+					return {label: pattern['label'], pattern: pattern['pattern']};
+				}
+			} catch(e) {
+				ERROR($FL_STR('flashbug.logPanel.error.match') + e);
 			}
 		}
+		return {label:'', pattern:''};
 	}
-};
+});
 
-//	Net Panel Listener
+// DOMPlate Implementation
 //-----------------------------------------------------------------------------
 
-function NetListener(tabCacheListener) {
-	this.tabCacheListener = tabCacheListener;
-}
-
-NetListener.prototype = {
-	onResponseBody: function(context, file) {
-		if (isAmfRequest(file.request)) {
-			try {
-				var cacheKey = getCacheKey(file.request);
-				file.responseStream = this.tabCacheListener.getResponseStreamFromCache(cacheKey);
-				this.tabCacheListener.invalidate(cacheKey);
-			} catch (e) {
-				ERROR(e);
-			}
-		}
-	}
-};
-
-function getWindowForRequest(request) {
-    var webProgress = getRequestWebProgress(request);
-    return webProgress ? safeGetWindow(webProgress) : null;
-}
-
-function getTabIdForRequest(request) {
-    try {
-        if (request.notificationCallbacks) {
-            var interfaceRequestor = request.notificationCallbacks.QueryInterface(Ci.nsIInterfaceRequestor);
-            try {
-                var win = interfaceRequestor.getInterface(Ci.nsIDOMWindow);
-                var tabId = getTabIdForWindow(win);
-                if (tabId) return tabId;
-            } catch (e) { }
-        }
-		
-        var progress = getRequestWebProgress(request);
-        var win = safeGetWindow(progress);
-        return getTabIdForWindow(win);
-    } catch (err) {
-        ERROR(err);
-    }
-
-    return null;
-}
-
-function getTabIdForWindow(aWindow) {
-    aWindow = getRootWindow(aWindow);
-	var tabBrowser = $("content");
-
-    if (!aWindow || !tabBrowser.getBrowserIndexForDocument) return null;
-
-    try {
-        var targetDoc = aWindow.document;
-        var tab = null;
-        var targetBrowserIndex = tabBrowser.getBrowserIndexForDocument(targetDoc);
-		
-        if (targetBrowserIndex != -1) {
-            tab = tabBrowser.tabContainer.childNodes[targetBrowserIndex];
-            return tab.linkedPanel;
-        }
-    } catch (e) {}
-
-    return null;
-}
-
-function getRequestWebProgress(request) {
-    try {
-        if (request.notificationCallbacks) return request.notificationCallbacks.getInterface(Ci.nsIWebProgress);
-    } catch (exc) {}
-
-    try {
-        if (request.loadGroup && request.loadGroup.groupObserver) return QI(request.loadGroup.groupObserver, Ci.nsIWebProgress);
-    } catch (e) {}
-
-    return null;
-}
-
-function safeGetWindow(webProgress) {
-    try {
-        if (webProgress) return webProgress.DOMWindow;
-    } catch (e) {
-        return null;
-    }
-}
-
-/**
- * @domplate Basic template for all Flashbug templates.
- */
 Firebug.FlashbugModel.Rep = domplate(Firebug.Rep, {
 	inspectable: false,
 	
@@ -1152,21 +899,9 @@ Firebug.FlashbugModel.XMLError = domplate(Firebug.FlashbugModel.Rep, {
 	inspectable: false,
 	
 	tag:
-        DIV({class: "flashbugRow"},
-            DIV({class: "flashbugRowXMLError"}, "$error.message"),
-            PRE({class: "flashbugRowXMLErrorSource"}, "$error.source")
-        )
-});
-
-Firebug.FlashbugModel.AMFInfo = domplate(Firebug.FlashbugModel.Rep, {
-	inspectable: false,
-	
-	tag:
-        DIV({style:"display: block;"},
-			DIV({class: "netInfoHeadersGroup"}, "Request"),
-            DIV({class: "flashbugAMFRequest"}),
-			DIV({class: "netInfoHeadersGroup"}, "Response"),
-            DIV({class: "flashbugAMFResponse"})
+        DIV({class: "flb-trace-row"},
+            DIV({class: "flb-trace-row-error-xml"}, "$error.message"),
+            PRE({class: "flb-trace-row-error-xml-source"}, "$error.source")
         )
 });
 
@@ -1174,476 +909,621 @@ Firebug.FlashbugModel.PanelDiv = domplate(Firebug.FlashbugModel.Rep, {
 	inspectable: false,
 	
 	tag:
-        DIV({},
-            DIV({class: "flashbugInfoTraceText flashbugInfoText"}),
-            DIV({class: "flashbugInfoPolicyText flashbugInfoText"}),
-            DIV({class: "flashbugInfoCookieText flashbugInfoText"})
+        DIV({class: "flb-trace-text"},
+            DIV({class: "flb-trace-info-trace-text flb-trace-info-text"}),
+            DIV({class: "flb-trace-info-policy-text flb-trace-info-text"}),
+            DIV({class: "flb-trace-disabled-text"},
+				$FL_STR("flashbug.logPanel.cleared")
+			)
         )
 });
 
-/**
- * @domplate Represents a template for basic cookie list layout. This
- * template also includes a header and related functionality (such as sorting).
- */
-Firebug.FlashbugModel.CookieTable = domplate(Firebug.FlashbugModel.Rep, {
-    inspectable: false,
-
-    tableTag:
-        TABLE({class: "cookieTable", cellpadding: 0, cellspacing: 0, hiddenCols: ""},
-            TBODY(
-                TR({class: "cookieHeaderRow", onclick: "$onClickHeader"},
-                    TD({id: "colName", class: "cookieHeaderCell alphaValue"},
-                        DIV({class: "cookieHeaderCellBox", title: $FL_STR("flashbug.cookie.colName.tooltip")}, $FL_STR("flashbug.cookie.colName.title"))
-                    ),
-                    TD({id: "colVersion", class: "cookieHeaderCell alphaValue"},
-                        DIV({class: "cookieHeaderCellBox", title: $FL_STR("flashbug.cookie.colVersion.tooltip")}, $FL_STR("flashbug.cookie.colVersion.title"))
-                    ),
-                    TD({id: "colSize", class: "cookieHeaderCell"},
-                        DIV({class: "cookieHeaderCellBox", title: $FL_STR("flashbug.cookie.colSize.tooltip")}, $FL_STR("flashbug.cookie.colSize.title"))
-                    ),
-					TD({id: "colSWF", class: "cookieHeaderCell"},
-                        DIV({class: "cookieHeaderCellBox", title: $FL_STR("flashbug.cookie.colSWF.tooltip")}, $FL_STR("flashbug.cookie.colSWF.title"))
-                    ),
-                    TD({id: "colPath", class: "cookieHeaderCell alphaValue"},
-                        DIV({class: "cookieHeaderCellBox", title: $FL_STR("flashbug.cookie.colPath.tooltip")}, $FL_STR("flashbug.cookie.colPath.title"))
-                    )
-                )
-            )
-        ),
-
-    onClickHeader: function(event) {
-        if (!isLeftClick(event)) return;
-        var table = getAncestorByClass(event.target, "cookieTable");
-        var column = getAncestorByClass(event.target, "cookieHeaderCell");
-        this.sortColumn(table, column);
-    },
-
-    sortColumn: function(table, col, direction) {
-        if (!col) return;
-		
-        if (typeof(col) == "string") {
-            var doc = table.ownerDocument;
-            col = doc.getElementById(col);
-        }
-		
-        if (!col) return;
-		
-        var numerical = !hasClass(col, "alphaValue");
-		
-        var colIndex = 0;
-        for (col = col.previousSibling; col; col = col.previousSibling) {
-            ++colIndex;
-		}
-		
-        this.sort(table, colIndex, numerical, direction);
-    },
-
-    sort: function(table, colIndex, numerical, direction) {
-        var tbody = table.lastChild;
-        var headerRow = tbody.firstChild;
-		
-        // Remove class from the currently sorted column
-        var headerSorted = getChildByClass(headerRow, "cookieHeaderSorted");
-        removeClass(headerSorted, "cookieHeaderSorted");
-		
-        // Mark new column as sorted.
-        var header = headerRow.childNodes[colIndex];
-        setClass(header, "cookieHeaderSorted");
-		
-        // If the column is already using required sort direction, bubble out.
-        if ((direction == "desc" && header.sorted == 1) || (direction == "asc" && header.sorted == -1)) return;
-		
-        var values = [];
-        for (var row = tbody.childNodes[1]; row; row = row.nextSibling) {
-            var cell = row.childNodes[colIndex];
-            var value = numerical ? parseFloat(cell.textContent) : cell.textContent;
-			
-            if (hasClass(row, "opened")) {
-                var cookieInfoRow = row.nextSibling;
-                values.push({row: row, value: value, info: cookieInfoRow});
-                row = cookieInfoRow;
-            } else {
-                values.push({row: row, value: value});
-            }
-        }
-		
-        values.sort(function(a, b) { return a.value < b.value ? -1 : 1; });
-		
-        if ((header.sorted && header.sorted == 1) || (!header.sorted && direction == "asc")) {
-            removeClass(header, "sortedDescending");
-            setClass(header, "sortedAscending");
-			
-            header.sorted = -1;
-			
-            for (var i = 0; i < values.length; ++i) {
-                tbody.appendChild(values[i].row);
-                if (values[i].info) tbody.appendChild(values[i].info);
-            }
-        } else {
-            removeClass(header, "sortedAscending");
-            setClass(header, "sortedDescending");
-			
-            header.sorted = 1;
-			
-            for (var i = values.length-1; i >= 0; --i) {
-                tbody.appendChild(values[i].row);
-                if (values[i].info) tbody.appendChild(values[i].info);
-            }
-        }
-		
-        // Remember last sorted column & direction in preferences.
-        var prefValue = header.getAttribute("id") + " " + (header.sorted > 0 ? "desc" : "asc");
-		setPref(FirebugPrefDomain, "flashbug.lastSortedColumn", prefValue);
-    },
-
-    supportsObject: function(object) {
-        return (object == this);
-    },
-	
-    createTable: function(parentNode) {
-        // Create cookie table UI.
-        var table = this.tableTag.replace({}, parentNode, this);
-        return table;
-    }
-});
-
-// Cookie Template (domplate)
-//-----------------------------------------------------------------------------
-
-/**
- * @domplate Represents a domplate template for cookie entry in the cookie list.
- */
-Firebug.FlashbugModel.CookieRow = domplate(Firebug.FlashbugModel.Rep, {
-    inspectable: false,
-
-    cookieTag:
-        FOR("cookie", "$cookies",
-            TR({class: "cookieRow", _repObject: "$cookie", onclick: "$onClickRow"},
-                TD({class: "cookieNameCol cookieCol"},
-                    DIV({class: "cookieNameLabel cookieLabel"}, "$cookie|getName")
-                ),
-                TD({class: "cookieVersionCol cookieCol"},
-                    SPAN({class: "cookieVersionLabel cookieLabel"}, "$cookie|getVersion")
-                ),
-                TD({class: "cookieSizeCol cookieCol"},
-                    DIV({class: "cookieSizeLabel cookieLabel"}, "$cookie|getSize")
-                ),
-				TD({class: "cookieSWFCol cookieCol"},
-                    DIV({class: "cookieSWFLabel cookieLabel"}, "$cookie|getSWF")
-                ),
-                TD({class: "cookiePathCol cookieCol"},
-                    DIV({class: "cookiePathLabel cookieLabel", title: "$cookie|getPath"},
-                        SPAN("$cookie|getPath")
-                    )
-                )
-            )
-        ),
-
-    bodyRow:
-        TR({class: "cookieInfoRow"},
-            TD({class: "cookieInfoCol", colspan: 5},
-				DIV({class: "cookieInfoBody"},
-					DIV({class: "cookieInfoValueText cookieInfoText", selected:true})
-				)
-			)
-        ),
-
-	hasProperties: function (ob) {
-		try {
-			for (var name in ob) {
-				return true;
-			}
-		} catch (exc) {}
-		return false;
-	},
-	
-    getName: function(cookie) {
-        return cookie.header.fileName;
-    },
-
-    getVersion: function(cookie) {
-        return "AMF" + cookie.header.amfVersion;
-    },
-
-    getSize: function(cookie) {
-        var size = cookie.fileSize;
-        return this.formatSize(size);
-    },
-	
-	getSWF: function(cookie) {
-		var swf = cookie.swf;
-		if(swf.indexOf(".swf") == -1) swf = null;
-        return swf ? swf : "?";
-	},
-
-    formatSize: function(bytes) {
-        if (bytes == -1 || bytes == undefined) {
-            return "?";
-        } else if (bytes < 1024) {
-            return bytes + " B";
-        } else if (bytes < 1024*1024) {
-            return Math.ceil(bytes/1024) + " KB";
-        } else {
-            return (Math.ceil(bytes/1024)/1024) + " MB";    // OK, this is probable not necessary ;-)
-		}
-    },
-
-    getPath: function(cookie) {
-        var path = cookie.path;
-        return path ? path : "?";
-    },
-	
-	// Firebug rep support
-    supportsObject: function(cookie) {
-        return (cookie.fullPath && cookie.fileSize && cookie.header && cookie.body);
-    },
-	
-	browseObject: function(cookie, context) {
-        return false;
-    },
-
-    getRealObject: function(cookie, context) {
-        return cookie.body;
-    },
-	
-	onRemove: function(url) {
-		var file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsILocalFile);
-		file.initWithPath(url);
-		
-		if(file.exists()) {
-			try {
-				file.remove(false);
-			} catch (e) {
-				ERROR(e);
-			}
-		}
-		
-		if(Firebug.FlashbugModel.solReader) Firebug.FlashbugModel.solReader.refresh();
-	},
-	
-	getContextMenuItems: function(data, target, context) {
-        var items = [];
-		var url = data.fullPath;
-		
-		// xxxHonza not sure how to do this better if the default Firebug's "Copy"
-        // command (cmd_copy) shouldn't be there.
-        var popup = $("fbContextMenu");
-        if (popup.firstChild && popup.firstChild.getAttribute("command") == "cmd_copy") popup.removeChild(popup.firstChild);
-		
-		items.push(
-			{label: $FL_STR("flashbug.contextMenu.delete"), nol10n: true, command: bindFixed(this.onRemove, this, url) },
-			"-",
-			{label: $FL_STR("flashbug.contextMenu.open"), nol10n: true, command: bindFixed(onOpen, this, url) },
-			{label: $FL_STR("flashbug.contextMenu.openFolder"), nol10n: true, command: bindFixed(onReveal, this, url) },
-			"-",
-			{label: $FL_STR("flashbug.contextMenu.copyLocation"), nol10n: true, command: bindFixed(copyToClipboard, FBL, url) }
-		);
-		
-        return items;
-    },
-
-    onClickRow: function(event) {
-        if (isLeftClick(event)) {
-            var row = getAncestorByClass(event.target, "cookieRow");
-            if (row) {
-                this.toggleRow(row);
-                cancelEvent(event);
-            }
-        }
-    },
-	
-	toggles: {},
-
-    toggleRow: function(row) {
-        var opened = hasClass(row, "opened");
-        toggleClass(row, "opened");
-        if (hasClass(row, "opened")) {
-            var bodyRow = this.bodyRow.insertRows({}, row)[0];
-			Firebug.DOMPanel.DirTable.tag.replace({object: row.repObject.body, toggles: this.toggles}, bodyRow.childNodes[0].childNodes[0].childNodes[0]);
-        } else {
-			row.parentNode.removeChild(row.nextSibling);
-        }
-    }
-});
 
 // Panel Implementation
 //-----------------------------------------------------------------------------
 
-// Firebug.AblePanel has been renamed in Firebug 1.4 to ActivablePanel.
-var BasePanel = Firebug.AblePanel ? Firebug.AblePanel : Firebug.Panel;
-BasePanel = Firebug.ActivablePanel ? Firebug.ActivablePanel : BasePanel;
-
 function FlashbugPanel() { }
-FlashbugPanel.prototype = extend(BasePanel, {
-    name: panelName,
-    title: $FL_STR("flashbug.title"),
-	searchable: true,
-
-	txtVersion:null,
-	cbTrace:null,
-	cbPolicy:null,
-	cbCookie:null,
-	btnPlayPause:null,
-	btnClear:null,
-	btnOpen:null,
-	btnRefresh:null,
-	btnDownload:null,
+FlashbugPanel.prototype = extend(Firebug.ActivablePanel, {
+    
+	//////////////////////////////////////////////////////////////////////////////////////////////
+	// Panel                                                                                    //
+	//////////////////////////////////////////////////////////////////////////////////////////////
+	//{
 	
-	trace: function(msg) {
+	// supports search
+	//searchable: false,
+	
+	// clicking on contents in the panel will invoke the inline editor, eg the CSS Style panel or HTML panel.
+	//editable: true,
+	
+	// if true, supports break-on-next (the pause button functionality)
+	//breakable: false,
+	
+	// relative position of the panel as a side panel, this is how Style appears on left in HTML main panel
+	//order: 2147483647,
+	
+	//  the character used to separate items on the panel status (aka breadcrumbs) in the tool bar, eg ">"  in the DOM panel
+	//statusSeparator: "<",
+	
+	// true if the panel wants to participate in A11y accessibility support.
+	//enableA11y: false,
+	
+	// Name of the panel that uses the same a11y logic.
+	//deriveA11yFrom: null,
+
+	/*initialize: function(context, doc) {
+		if (!context.browser) {
+			if (FBTrace.DBG_ERRORS) FBTrace.sysout("attempt to create panel with dud context!");
+			return false;
+		}
+		
+		this.context = context;
+		this.document = doc;
+		
+		this.panelNode = doc.createElement("div");
+		this.panelNode.ownerPanel = this;
+		
+		setClass(this.panelNode, "panelNode panelNode-"+this.name+" contextUID="+context.uid);
+		
+		// Load persistent content if any.
+		var persistedState = Firebug.getPanelState(this);
+		if (persistedState) {
+			this.persistContent = persistedState.persistContent;
+			if (this.persistContent && persistedState.panelNode) this.loadPersistedContent(persistedState);
+		}
+		
+		doc.body.appendChild(this.panelNode);
+		
+		// Update panel's tab in case the break-on-next (BON) is active.
+		var shouldBreak = this.shouldBreakOnNext();
+		Firebug.Breakpoint.updatePanelTab(this, shouldBreak);
+		
+		if (FBTrace.DBG_INITIALIZE) FBTrace.sysout("firebug.initialize panelNode for "+this.name+"\n");
+		
+		this.initializeNode(this.panelNode);
+	},*/
+
+	// Panel may store info on state
+	/*destroy: function(state) {
+		if (FBTrace.DBG_INITIALIZE) FBTrace.sysout("firebug.destroy panelNode for "+this.name+"\n");
+		
+		if (this.panelNode) {
+			if (this.persistContent) {
+				this.savePersistedContent(state);
+			} else {
+				delete state.persistContent;
+			}
+			
+			delete this.panelNode.ownerPanel;
+		}
+		
+		this.destroyNode();
+		
+		clearDomplate(this.panelNode);
+	},*/
+
+	/*savePersistedContent: function(state) {
+		state.panelNode = this.panelNode;
+		state.persistContent = this.persistContent;
+	},*/
+
+	/*loadPersistedContent: function(persistedState) {
+		// move the nodes from the persistedState to the panel
+		while (persistedState.panelNode.firstChild) {
+			this.panelNode.appendChild(persistedState.panelNode.firstChild);
+		}
+		
+		scrollToBottom(this.panelNode);
+	},*/
+
+	// called when a panel in one XUL window is about to appear in another one.
+	/*detach: function(oldChrome, newChrome) {
+	},*/
+
+	// this is how a panel in one window reappears in another window; lazy called
+	/*reattach: function(doc) {
+		this.document = doc;
+		
+		if (this.panelNode) {
+			this.panelNode = doc.adoptNode(this.panelNode, true);
+			this.panelNode.ownerPanel = this;
+			doc.body.appendChild(this.panelNode);
+		}
+	},*/
+
+	// Called at the end of module.initialize; addEventListener-s here
+	/*initializeNode: function(panelNode) {
+		dispatch(this.fbListeners, "onInitializeNode", [this]);
+	},*/
+
+	// removeEventListener-s here.
+	/*destroyNode: function() {
+		dispatch(this.fbListeners, "onDestroyNode", [this]);
+	},*/
+
+	// persistedPanelState plus non-persisted hide() values
+	/*show: function(state) {
+	},*/
+
+	// store info on state for next show.
+	/*hide: function(state) {
+	},*/
+
+	/*watchWindow: function(win) {
+	},*/
+
+	/*unwatchWindow: function(win) {
+	},*/
+
+	/*updateOption: function(name, value) {
+	},*/
+
+	/*
+	 * Called after chrome.applyTextSize
+	 * @param zoom: ratio of current size to normal size, eg 1.5
+	 */
+	/*onTextSizeChange: function(zoom) {
+	},*/
+
+	// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+
+	/**
+	 * Toolbar helpers
+	 */
+	/*showToolbarButtons: function(buttonsId, show) {
+		tr {
+			var buttons = Firebug.chrome.$(buttonsId);
+			collapse(buttons, !show);
+		} catch (exc) {
+			if (FBTrace.DBG_ERRORS) FBTrace.sysout("firebug.Panel showToolbarButtons FAILS "+exc, exc);
+		}
+	},*/
+
+	// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+
+	/**
+	 * Returns a number indicating the view's ability to inspect the object.
+	 *
+	 * Zero means not supported, and higher numbers indicate specificity.
+	 */
+	/*supportsObject: function(object, type) {
+		return 0;
+	},*/
+
+	// beyond type testing, is this object selectable?
+	/*hasObject: function(object) {
+		return false;
+	},*/
+
+	/*navigate: function(object) {
+		if (FBTrace.DBG_PANELS) FBTrace.sysout("navigate "+this.name+" to "+object+" when this.location="+this.location+"\n");
+		if (!object) object = this.getDefaultLocation(this.context);
+		if (!object) object = null;  // not undefined.
+		
+		// if this.location undefined, may set to null
+		if ( !this.location || (object != this.location) ) {
+			if (FBTrace.DBG_PANELS) FBTrace.sysout("navigate "+this.name+" to location "+object+"\n");
+			
+			this.location = object;
+			this.updateLocation(object);
+			
+			dispatch(Firebug.uiListeners, "onPanelNavigate", [object, this]);
+		}
+	},*/
+
+	// if the module can return null from getDefaultLocation, then it must handle it here.
+	/*updateLocation: function(object) {
+	},*/
+
+	/**
+	 * Navigates to the next document whose match parameter returns true.
+	 */
+	/*navigateToNextDocument: function(match, reverse) {
+		// This is an approximation of the UI that is displayed by the location
+		// selector. This should be close enough, although it may be better
+		// to simply generate the sorted list within the module, rather than
+		// sorting within the UI.
+		var self = this;
+		function compare(a, b) {
+			var locA = self.getObjectDescription(a);
+			var locB = self.getObjectDescription(b);
+			if(locA.path > locB.path)
+				return 1;
+			if(locA.path < locB.path)
+				return -1;
+			if(locA.name > locB.name)
+				return 1;
+			if(locA.name < locB.name)
+				return -1;
+			return 0;
+		}
+		var allLocs = this.getLocationList().sort(compare);
+		for (var curPos = 0; curPos < allLocs.length && allLocs[curPos] != this.location; curPos++);
+		
+		function transformIndex(index) {
+			if (reverse) {
+				// For the reverse case we need to implement wrap around.
+				var intermediate = curPos - index - 1;
+				return (intermediate < 0 ? allLocs.length : 0) + intermediate;
+			} else {
+				return (curPos + index + 1) % allLocs.length;
+			}
+		};
+		
+		for (var next = 0; next < allLocs.length - 1; next++) {
+			var object = allLocs[transformIndex(next)];
+			
+			if (match(object)) {
+				this.navigate(object);
+				return object;
+			}
+		}
+	},*/
+
+	/*select: function(object, forceUpdate) {
+		if (!object) object = this.getDefaultSelection(this.context);
+		
+		if(FBTrace.DBG_PANELS) FBTrace.sysout("firebug.select "+this.name+" forceUpdate: "+forceUpdate+" "+object+((object==this.selection)?"==":"!=")+this.selection);
+		
+		if (forceUpdate || object != this.selection) {
+			this.selection = object;
+			this.updateSelection(object);
+			
+			dispatch(Firebug.uiListeners, "onObjectSelected", [object, this]);
+		}
+	},*/
+
+
+	/*updateSelection: function(object) {
+	},*/
+
+	/*refresh: function() {
+	},*/
+
+	/*markChange: function(skipSelf) {
+		if (this.dependents) {
+			if (skipSelf) {
+				for (var i = 0; i < this.dependents.length; ++i) {
+					var panelName = this.dependents[i];
+					if (panelName != this.name) this.context.invalidatePanels(panelName);
+				}
+			} else {
+				this.context.invalidatePanels.apply(this.context, this.dependents);
+			}
+		}
+	},*/
+
+	// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+
+	/*startInspecting: function() {
+	},*/
+
+	/*stopInspecting: function(object, cancelled) {
+	},*/
+
+	// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+
+	/*search: function(text, reverse) {
+	},*/
+
+	/**
+	 * Retrieves the search options that this modules supports.
+	 * This is used by the search UI to present the proper options.
+	 */
+	/*getSearchOptionsMenuItems: function() {
+		return [
+			Firebug.Search.searchOptionMenu("search.Case Sensitive", "searchCaseSensitive")
+		];
+	},*/
+
+	// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+
+	// Called when "Options" clicked. Return array of
+	// {label: 'name', nol10n: true,  type: "checkbox", checked: <value>, command:function to set <value>}
+	/*getOptionsMenuItems: function() {
+		return null;
+	},*/
+
+	/*
+	 * Called by chrome.onContextMenu to build the context menu when this panel has focus.
+	 * See also FirebugRep for a similar function also called by onContextMenu
+	 * Extensions may monkey patch and chain off this call
+	 * @param object: the 'realObject', a model value, eg a DOM property
+	 * @param target: the HTML element clicked on.
+	 * @return an array of menu items.
+	 */
+	/*getContextMenuItems: function(object, target) {
+		return [];
+	},*/
+
+	/*getBreakOnMenuItems: function() {
+		return [];
+	},*/
+
+	/*getEditor: function(target, value) {
+	},*/
+
+	// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+
+	/*getDefaultSelection: function(context) {
+		return null;
+	},*/
+
+	/*browseObject: function(object) {
+	},*/
+
+	/*getPopupObject: function(target) {
+		return Firebug.getRepObject(target);
+	},*/
+
+	/*getTooltipObject: function(target) {
+		return Firebug.getRepObject(target);
+	},*/
+
+	/*showInfoTip: function(infoTip, x, y) {
+	},*/
+
+	/*getObjectPath: function(object) {
+		return null;
+	},*/
+
+	// An array of objects that can be passed to getObjectLocation.
+	// The list of things a panel can show, eg sourceFiles.
+	// Only shown if panel.location defined and supportsObject true
+	/*getLocationList: function() {
+		return null;
+	},*/
+
+	/*getDefaultLocation: function(context) {
+		return null;
+	},*/
+
+	/*getObjectLocation: function(object) {
+		return "";
+	},*/
+
+	// Text for the location list menu eg script panel source file list
+	// return.path: group/category label, return.name: item label
+	/*getObjectDescription: function(object) {
+		var url = this.getObjectLocation(object);
+		return FBL.splitURLBase(url);
+	},*/
+
+	/*
+	 *  UI signal that a tab needs attention, eg Script panel is currently stopped on a breakpoint
+	 *  @param: show boolean, true turns on.
+	 */
+	/*highlight: function(show) {
+		var tab = this.getTab();
+		if (!tab) return;
+		
+		if (show) {
+			tab.setAttribute("highlight", "true");
+		} else {
+			tab.removeAttribute("highlight");
+		}
+	},*/
+
+	/*getTab: function() {
+		var chrome = Firebug.chrome;
+		
+		var tab = chrome.$("fbPanelBar2").getTab(this.name);
+		if (!tab) tab = chrome.$("fbPanelBar1").getTab(this.name);
+		return tab;
+	},*/
+
+	// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+	// Support for Break On Next
+
+	/**
+	 * Called by the framework when the user clicks on the Break On Next button.
+	 * @param {Boolean} armed Set to true if the Break On Next feature is
+	 * to be armed for action and set to false if the Break On Next should be disarmed.
+	 * If 'armed' is true, then the next call to shouldBreakOnNext should be |true|.
+	 */
+	/*breakOnNext: function(armed) {
+	},*/
+
+	/**
+	 * Called when a panel is selected/displayed. The method should return true
+	 * if the Break On Next feature is currently armed for this panel.
+	 */
+	/*shouldBreakOnNext: function() {
+		return false;
+	},*/
+
+	/**
+	 * Returns labels for Break On Next tooltip (one for enabled and one for disabled state).
+	 * @param {Boolean} enabled Set to true if the Break On Next feature is
+	 * currently activated for this panel.
+	 */
+	/*getBreakOnNextTooltip: function(enabled) {
+		return null;
+	},*/
+	//}
+	//////////////////////////////////////////////////////////////////////////////////////////////
+	// ActivablePanel                                                                           //
+	//////////////////////////////////////////////////////////////////////////////////////////////
+	//{
+	//activable: true,
+
+	/*isActivable: function() {
+		return this.activable;
+	},*/
+
+	/*isEnabled: function() {
+		if (!this.isActivable()) return true;
+		
+		if (!this.name) return false;
+		
+		return Firebug.getPref(Firebug.prefDomain + "." + this.name, "enableSites");
+	},*/
+
+	/*setEnabled: function(enable) {
+		if (!this.name || !this.activable) return;
+		
+		var prefDomain = Firebug.prefDomain + "." + this.name;
+		
+		// Proper activation preference must be available.
+		var type = prefs.getPrefType(prefDomain + ".enableSites")
+		if (type != Ci.nsIPrefBranch.PREF_BOOL) {
+			if (FBTrace.DBG_ERRORS || FBTrace.DBG_ACTIVATION) FBTrace.sysout("firebug.ActivablePanel.setEnabled FAILS not a PREF_BOOL: " + type);
+			return;
+		}
+		
+		Firebug.setPref(prefDomain, "enableSites", enable);
+	},*/
+
+	/**
+	* Called when an instance of this panel type is enabled or disabled. Again notice that
+	* this is a class method and so, panel instance variables (like e.g. context) are
+	* not accessible from this method.
+	* @param {Object} enable Set to true if this panel type is now enabled.
+	*/
+	/*onActivationChanged: function(enable) {
+		// TODO: Use Firebug.ActivableModule.addObserver to express dependencies on modules.
+	},*/
+	//}
+	//////////////////////////////////////////////////////////////////////////////////////////////
+	// Shared Objects Panel                                                                     //
+	//////////////////////////////////////////////////////////////////////////////////////////////
+	
+	trace: function(msg, obj) {
 		msg = "Flashbug - Panel::" + msg;
 		if (FBTrace.DBG_FLASH_PANEL) {
 			if (typeof FBTrace.sysout == "undefined") {
-				alert(msg);
+				Flashbug.alert(msg + " | " + obj);
 			} else {
-				FBTrace.sysout(msg);
+				FBTrace.sysout(msg, obj);
 			}
 		}
 	},
 	
-	//////////////////////
-	// Firebug Specific //
-	//////////////////////
+	////////////////////////////
+	// Firebug Panel Override //
+	////////////////////////////
 	
-    /*initialize: function(context, doc) {
-		this.trace("initialize");
-		BasePanel.initialize.apply(this, arguments);
-    },*/
+	searchable: true,
+	editable: false,
+	breakable: true,
 	
 	// Called at the end of module.initialize; addEventListener-s here
 	initializeNode: function(panelNode) {
 		this.trace("initializeNode");
 		
-		if(!this.panelNode.id ) this.panelNode.id = Math.random();
-		
-		this.refreshElements();
-		
 		// Init player version detection
-		if(Firebug.FlashbugModel.jsPlayerVersion == "") Firebug.FlashbugModel.jsPlayerVersion = this.getJSPlayerVersion();
-		this.showVersion();
+		if(Firebug.FlashbugModel.jsPlayerVersion == "") {
+			var version = $FL_STR("flashbug.noPlayer");
+			
+			// Version = '10.1.53.64'
+			var p = navigator.plugins["Shockwave Flash"];
+			
+			if(p) {
+				var d = navigator.plugins["Shockwave Flash"].version;
+				if (d && !(typeof navigator.mimeTypes != "undefined" && navigator.mimeTypes[SWF_MIME] && !navigator.mimeTypes[SWF_MIME].enabledPlugin)) {
+					version = Flashbug.getOS().toUpperCase() + " ";
+					d = p.version;
+					d = d.replace(/\./g, ',');
+					version += d + " ";
+					version += $FL_STR("flashbug.unknownVersion");
+				}
+			}
+			
+			this.trace("initializeNode - " + version);
+			Firebug.FlashbugModel.jsPlayerVersion = version;
+		}
 		
-		this.refresh();
+		// Add Divs
+		Firebug.FlashbugModel.PanelDiv.tag.replace({}, this.panelNode, this);
+		this.traceNode = this.panelNode.getElementsByClassName("flb-trace-info-trace-text")[0];
+		this.policyNode = this.panelNode.getElementsByClassName("flb-trace-info-policy-text")[0];
+		
+		// Select Log just so selectedNode is populated
+		this.showLog();
+		
+		this.showVersion();
 	},
 	
-	/*
-	destroyNode: function() {
-		this.trace("destroyNode");
-	},
-	
-	detach: function(oldChrome, newChrome) {
-		this.trace("detach");
-        BasePanel.detach.apply(this, arguments);
-    },*/
-
-	reattach: function(doc) { // this is how a panel in one window reappears in another window; lazy called
+	// this is how a panel in one window reappears in another window; lazy called
+	reattach: function(doc) {
 		this.trace("reattach");
 		
-		this.refreshElements();
 		this.showVersion();
-		this.refreshChrome();
+		this.refresh();
 		
-		BasePanel.reattach.apply(this, arguments);
+		Firebug.ActivablePanel.reattach.apply(this, arguments);
 	},
-	
-	/*enablePanel: function(module) {
-		this.trace("enablePanel");
-		BasePanel.enablePanel.apply(this, arguments);
-	},
-	
-	disablePanel: function(module) {
-		this.trace("disablePanel");
-		BasePanel.disablePanel.apply(this, arguments);
-	},*/
 	
 	refresh: function() {
 		this.trace("refresh");
 		
-		// Add Divs
-		Firebug.FlashbugModel.PanelDiv.tag.replace({}, this.panelNode, this);
+		// Set the tooltips and update break-on-next button's state.
+        var shouldBreak = this.shouldBreakOnNext();
+        Firebug.Breakpoint.updateBreakOnNextState(this, shouldBreak);
+        Firebug.Breakpoint.updateBreakOnNextTooltips(this);
+        Firebug.Breakpoint.updatePanelTab(this, shouldBreak);
 		
-		// Init readers
-		// BUG Sometimes solReader would return null
-		if(Firebug.FlashbugModel.traceReader == null || Firebug.FlashbugModel.policyReader == null || Firebug.FlashbugModel.solReader == null) {
-			Firebug.FlashbugModel.traceReader = 	new Flashbug.LogReader("Trace", getElementByClass(this.panelNode.firstChild, "flashbugInfoTraceText"),		this);
-			Firebug.FlashbugModel.policyReader = 	new Flashbug.LogReader("Policy", getElementByClass(this.panelNode.firstChild, "flashbugInfoPolicyText"), 	this);
-			Firebug.FlashbugModel.solReader = 		new Flashbug.SOLReader("Cookie", getElementByClass(this.panelNode.firstChild, "flashbugInfoCookieText"), 	this);
-		} else {
-			Firebug.FlashbugModel.traceReader.initContext(this);
-			Firebug.FlashbugModel.policyReader.initContext(this);
-			Firebug.FlashbugModel.solReader.initContext(this, this.context);
-			if(Firebug.FlashbugModel.selectedReader) this.selectLog();
+		// Get node associated with reader
+		var selectedReader = Firebug.FlashbugModel.selectedReader;
+		var node = (selectedReader.name == "Trace") ? this.traceNode : this.policyNode;
+		
+		// Populate Node
+		node.innerHTML = "";
+		node.appendChild(selectedReader.divLog);
+		
+		// If node is displayed & Auto scroll
+		if(node == this.selectedNode && Firebug.getPref(Firebug.prefDomain, "flashbug.autoScroll")) {
+			scrollToBottom(this.panelNode);
 		}
+	},
+	
+	// The panel was disabled so, show the disabled page. 
+	// This page also replaces the old content so, the panel is fresh empty after it's enabled again.
+	show: function(state) {
+		this.trace("show");
+		
+		// Show Player Version
+		this.showToolbarButtons("fbFlashbugVersion", true);
 		
 		// Open last/default tab
-		var defaultTab = getPref(FirebugPrefDomain, "flashbug.defaultTab");
-		if(defaultTab == "Trace") {
-			this.cbTrace.checked = true;
-		} else if(defaultTab == "Policy") {
-			this.cbPolicy.checked = true;
+		if(Firebug.getPref(Firebug.prefDomain, "flashbug.defaultTab") == "trace") {
+			Firebug.chrome.$("flashbugLogFilter-trace").checked = true;
 		} else {
-			this.cbCookie.checked = true;
-		}
-	},
-	
-	updateScroll: function() {
-		//this.trace("updateScroll");
-		if (getPref(FirebugPrefDomain, "flashbug.autoScroll")) {
-			var node = Firebug.FlashbugModel.selectedReader.node.parentNode.parentNode;
-			node.scrollTop = node.scrollHeight - node.offsetHeight;
-		}
-	},
-	
-	// persistedPanelState plus non-persisted hide() values
-	// (disablePanel) The panel was disabled so, show the disabled page. This page also replaces the
-    // old content so, the panel is fresh empty after it's enabled again.
-	show: function(state) {
-		this.trace("show() / " + this.panelNode.id);
-		
-		// For backward compatibility with Firebug 1.1
-		if (Firebug.ActivableModule) {
-			var enabled = Firebug.FlashbugModel.isEnabled(this.context);
-			this.trace("show() - " + enabled);
-			this.showToolbarButtons("fbFlashbugButtons", enabled);
-			this.showToolbarButtons("fbFlashbugVersion", enabled);
-			if (!enabled) {
-				// The activation model has been changed in Firebug 1.4. This is 
-                // just to keep backward compatibility.
-				if (Firebug.DisabledPanelPage && Firebug.DisabledPanelPage.show) {
-					Firebug.DisabledPanelPage.show(this, Firebug.FlashbugModel);
-				} else if(Firebug.FlashbugModel.disabledPanelPage) {
-					Firebug.FlashbugModel.disabledPanelPage.show(this);
-				} else {
-					Firebug.ModuleManagerPage.show(this, Firebug.FlashbugModel);
-				}
-                return;
-			}
+			Firebug.chrome.$("flashbugLogFilter-policy").checked = true;
 		}
 		
 		this.refresh();
-		this.selectLog();
 	},
 	
 	// store info on state for next show.
 	hide: function(state) {
 		this.trace("hide");
-		if (Firebug.ActivableModule) {
-			this.showToolbarButtons("fbFlashbugButtons", false);
-			this.showToolbarButtons("fbFlashbugVersion", false);
-		}
+		
+		// Hide Player Version
+		this.showToolbarButtons("fbFlashbugVersion", false);
 	},
 	
-	getContextMenuItems: function(data, target, context) {
+	/*
+     * Called by chrome.onContextMenu to build the context menu when this panel has focus.
+     * See also FirebugRep for a similar function also called by onContextMenu
+     * Extensions may monkey patch and chain off this call
+     * @param object: the 'realObject', a model value, eg a DOM property
+     * @param target: the HTML element clicked on.
+     * @return an array of menu items.
+     */
+	getContextMenuItems: function(object, target, context) {
 		this.trace("getContextMenuItems");
-        var items = [];
-		
-		// xxxHonza not sure how to do this better if the default Firebug's "Copy"
-        // command (cmd_copy) shouldn't be there.
+        
+		// Remove default 'Copy' command
         var popup = $("fbContextMenu");
         if (popup.firstChild && popup.firstChild.getAttribute("command") == "cmd_copy") popup.removeChild(popup.firstChild);
 		
-		if(target.className == "flashbugLink") {
+		var items = [];
+		
+		if(target.className == "flb-link") {
 			var url = target.textContent;
 			items.push({label: $FL_STR("flashbug.contextMenu.copyLocation"), nol10n: true, command: bindFixed(copyToClipboard, FBL, url) });
-			items.push({label: $FL_STR("flashbug.contextMenu.openTab"), nol10n: true, command: bindFixed(onOpenTab, this, url) });
+			items.push({label: $FL_STR("flashbug.contextMenu.openTab"), nol10n: true, command: bindFixed(openNewTab, FBL, url) });
 		} else {
 			items.push({label: $FL_STR("flashbug.contextMenu.copy"), nol10n: true, command: bindFixed(copyToClipboard, FBL, target.textContent) });
 		}
@@ -1651,16 +1531,23 @@ FlashbugPanel.prototype = extend(BasePanel, {
         return items;
     },
 	
+	// Called when "Options" clicked. Return array of
+    // {label: 'name', nol10n: true,  type: "checkbox", checked: <value>, command:function to set <value>}
+	// function optionMenu(label, option, tooltiptext)
 	getOptionsMenuItems: function(context) {
 		this.trace("getOptionsMenuItems");
 		return [
-			this.optionMenu($FL_STR("flashbug.options.autoscroll"), "flashbug.autoScroll"),
-			
+			{
+				label: $FL_STR("flashbug.options.autoscroll"),
+				type: "checkbox",
+				checked: Firebug.getPref(Firebug.prefDomain, "flashbug.autoScroll"),
+				option: "flashbug.autoScroll",
+				tooltiptext: $FL_STR("flashbug.options.autoscrollToolTip"),
+				command: bindFixed(Firebug.setPref, Firebug, Firebug.prefDomain, "flashbug.autoScroll", !Firebug.getPref(Firebug.prefDomain, "flashbug.autoScroll"))
+			},
 			"-",
 			{
 				label: $FL_STR("flashbug.options.pref"),
-				nol10n: true,
-				type: "button",
 				command: function() {
 					context.chrome.window.openDialog("chrome://flashbug/content/settings.xul", "", "chrome,modal,close");
 				}
@@ -1668,117 +1555,81 @@ FlashbugPanel.prototype = extend(BasePanel, {
 		];
     },
 	
-	optionMenu: function(label, option) {
-		this.trace("optionMenu");
-        var value = getPref(FirebugPrefDomain, option);
-        return {
-            label: label,
-            nol10n: true,
-            type: "checkbox",
-            checked: value,
-            command: bindFixed(setPref, this, FirebugPrefDomain, option, !value)
-        };
-    },
+	getSearchOptionsMenuItems: function() {
+		return [
+			Firebug.Search.searchOptionMenu("search.Case Sensitive", "searchCaseSensitive"),
+			//Firebug.Search.searchOptionMenu("search.Use Regular Expression", "searchUseRegularExpression")
+		];
+	},
 	
 	search: function(text, reverse) {
-		this.trace("search() : " + text + " : " + reverse);
+		this.trace("search - text:" + text + " reverse:" + reverse);
 		
-		if(Firebug.FlashbugModel.selectedReader.removeHighlight) {
-			Firebug.FlashbugModel.selectedReader.removeHighlight();
-			if (!text) return;
+		if (!text) {
+            delete this.currentSearch;
+            return false;
+        }
+		
+        var row;
+        if (this.currentSearch && text == this.currentSearch.text) {
+            row = this.currentSearch.findNext(true, false, reverse, Firebug.Search.isCaseSensitive(text));
+        } else {
+            this.currentSearch = new LogPanelSearch(this);
+            row = this.currentSearch.find(text, reverse, Firebug.Search.isCaseSensitive(text));
+        }
+		
+        if (row) {
+            var sel = this.document.defaultView.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(this.currentSearch.range);
 			
-			return Firebug.FlashbugModel.selectedReader.highlight(text);
-		}
-		
-		return;
+            scrollIntoCenterView(row, this.panelNode);
+			setClassTimed(row, "jumpHighlight", this.context);
+            return true;
+        } else {
+            return false;
+        }
     },
 	
-	///////////////////////
-	// Flashbug Specific //
-	///////////////////////
-	
-	selectLog: function() {
-		this.trace("selectLog() - " + getPref(FirebugPrefDomain, "flashbug.defaultTab") + " / " + this.panelNode.id);
-		if (this.panelNode.selectedText) this.panelNode.selectedText.removeAttribute("selected");
-		this.panelNode.selectedText = getChildByClass(this.panelNode.firstChild, "flashbugInfo" + getPref(FirebugPrefDomain, "flashbug.defaultTab") + "Text");
-		this.panelNode.selectedText.setAttribute("selected", "true");
-		
-		this.refreshChrome();
-		
-		this.trace("updateScroll");
-		this.updateScroll();
-	},
-	
-	refreshElements: function() {
-		this.trace("refreshElements");
-		var chrome = this.context ? this.context.chrome : FirebugChrome;
-		this.txtVersion = 	chrome.$("txtVersion");
-		this.cbTrace = 		chrome.$("flashbugLogFilter-trace");
-		this.cbPolicy = 	chrome.$("flashbugLogFilter-policy");
-		this.cbCookie = 	chrome.$("flashbugLogFilter-cookie");
-		this.btnPlayPause = chrome.$("flbPlayPause");
-		this.btnClear = 	chrome.$("flbClear");
-		this.btnOpen = 		chrome.$("flbOpen");
-		this.btnRefresh = 	chrome.$("flbRefresh");
-		this.btnDownload = 	chrome.$("fbFlashbugDownload");
-	},
-	
-	refreshChrome: function() {
-		this.trace("refreshChrome");
-		
-		// If Firebug is opened in a window first, selectedReader might not exist yet
-		if(Firebug.FlashbugModel.selectedReader) {
-			if(!Firebug.FlashbugModel.selectedReader.paused) {
-				this.btnPlayPause.setAttribute("label", $FL_STR("flashbug.menu.pause"));
-				this.btnPlayPause.setAttribute("tooltiptext", $FL_STR("flashbug.menu.pauseToolTip"));
-				this.btnPlayPause.setAttribute("command", "cmd_flbPause");
-				this.btnPlayPause.setAttribute("image", "chrome://flashbug/skin/pause.png");
-			} else {
-				this.btnPlayPause.setAttribute("label", $FL_STR("flashbug.menu.play"));
-				this.btnPlayPause.setAttribute("tooltiptext", $FL_STR("flashbug.menu.playToolTip"));
-				this.btnPlayPause.setAttribute("command", "cmd_flbPlay");
-				this.btnPlayPause.setAttribute("image", "chrome://flashbug/skin/play.png");
-			}
-			
-			if(Firebug.FlashbugModel.selectedReader == Firebug.FlashbugModel.solReader) {
-				collapse(this.btnPlayPause, true);
-				collapse(this.btnClear, true);
-				collapse(this.btnOpen, true);
-				collapse(this.btnRefresh, false);
-			} else {
-				collapse(this.btnPlayPause, false);
-				collapse(this.btnClear, false);
-				collapse(this.btnOpen, false);
-				collapse(this.btnRefresh, true);
-			}
+	getBreakOnNextTooltip: function(enable) {
+		if(enable) {
+			return $FL_STR("flashbug.logPanel.toolbar.play");
+		} else {
+			return $FL_STR("flashbug.logPanel.toolbar.pause");
 		}
 	},
 	
-	// From swfobject 2.1
-	getJSPlayerVersion: function() {
-		var version = $FL_STR("flashbug.noPlayer");
-		// Description = 'Shockwave Flash 10.1 r53'
-		var d = navigator.plugins["Shockwave Flash"].description;
-		if (d && !(typeof navigator.mimeTypes != "undefined" && navigator.mimeTypes["application/x-shockwave-flash"] && !navigator.mimeTypes["application/x-shockwave-flash"].enabledPlugin)) { // navigator.mimeTypes["application/x-shockwave-flash"].enabledPlugin indicates whether plug-ins are enabled or disabled in Safari 3+
-			version = Flashbug.getOS().toUpperCase() + " ";
-			
-			// Firefox 3.6+
-			if(navigator.plugins["Shockwave Flash"].version) {
-				// Version = '10.1.53.64'
-				d = navigator.plugins["Shockwave Flash"].version;
-				d = d.replace(/\./g, ',');
-				version += d + " ";
-			} else {
-				d = d.replace(/^.*\s+(\S+\s+\S+$)/, "$1");
-				version += parseInt(d.replace(/^(.*)\..*$/, "$1"), 10) + ",";
-				version += parseInt(d.replace(/^.*\.(.*)\s.*$/, "$1"), 10) + ",";
-				version += /[r|d]/.test(d) ? parseInt(d.replace(/^.*[r|d](.*)$/, "$1"), 10) : 0;
-				version += ",X ";
-			}
-			version += $FL_STR("flashbug.unknownVersion");
+	breakOnNext: function(armed) {
+		if(armed) {
+			Firebug.FlashbugModel.onPause(null, this);
+		} else {
+			Firebug.FlashbugModel.onPlay(null, this);
 		}
-		this.trace("getJSPlayerVersion - " + version);
-		return version;
+	},
+	
+	shouldBreakOnNext: function() {
+		return Firebug.FlashbugModel.selectedReader.paused;
+	},
+	
+	////////////////////////////
+	// Flash Console Specific //
+	////////////////////////////
+	
+	name: panelName,
+    title: $FL_STR("flashbug.logPanel.title"),
+	traceNode: null,
+	policyNode: null,
+	selectedNode: null,
+	
+	showLog: function() {
+		this.trace("showLog - " + Firebug.getPref(Firebug.prefDomain, "flashbug.defaultTab"));
+		
+		if(this.selectedNode) this.selectedNode.removeAttribute("selected");
+		this.selectedNode = getChildByClass(this.panelNode.firstChild, "flb-trace-info-" + Firebug.getPref(Firebug.prefDomain, "flashbug.defaultTab").toLowerCase() + "-text");
+		this.selectedNode.setAttribute("selected", "true");
+		
+		// So search doesn't freeze when switching logs
+		delete this.currentSearch;
 	},
 	
 	showVersion: function() {
@@ -1786,44 +1637,127 @@ FlashbugPanel.prototype = extend(BasePanel, {
 		this.trace("showVersion : '" + version + "'");
 		
 		// If we know for sure they have the debugger, hide link
-		if(version.indexOf("Debug") != -1) this.btnDownload.style.display = 'none';
+		if(version.indexOf("Debug") != -1) Firebug.chrome.$("fbFlashbugDownload").style.display = 'none';
 		
-		this.txtVersion.value = $FL_STR("flashbug.playerVersion") + version;
-		this.txtVersion.setAttribute("value", $FL_STR("flashbug.playerVersion") + version);
+		Firebug.chrome.$("flbVersion").value = $FL_STR("flashbug.playerVersion") + " " + version;
 	}
 });
 
-// Firebug Registration
-//-----------------------------------------------------------------------------
+////////////////////
+// Firebug Search //
+////////////////////
+// Copied from net.js
+var LogPanelSearch = function(panel, rowFinder) {
+	var panelNode = panel.panelNode;
+	var doc = panelNode.ownerDocument;
+	var searchRange, startPt;
+	Flashbug.trace("panelNode", panelNode);
+	Flashbug.trace("doc", doc);
 
-// For backward compatibility with Firebug 1.1
-if (Firebug.ActivableModule) {
-    Firebug.registerActivableModule(Firebug.FlashbugModel);
-    Firebug.registerActivableModule(Firebug.AMFInfoTab);
+	// Common search object methods.
+	this.find = function(text, reverse, caseSensitive) {
+		this.text = text;
+		
+		finder.findBackwards = !!reverse;
+		finder.caseSensitive = !!caseSensitive;
+		
+		this.currentRow = this.getFirstRow();
+		this.resetRange();
+		
+		return this.findNext(false, false, reverse, caseSensitive);
+	};
+
+	this.findNext = function(wrapAround, sameNode, reverse, caseSensitive) {
+		while (this.currentRow) {
+			var match = this.findNextInRange(reverse, caseSensitive);
+			if (match) return match;
+			
+			// Here is where they used regex to test if the response body has the text
+			
+			this.currentRow = this.getNextRow(wrapAround, reverse);
+			
+			if (this.currentRow) this.resetRange();
+		}
+	};
+
+	// Internal search helpers.
+	this.findNextInRange = function(reverse, caseSensitive) {
+		if (this.range) {
+			startPt = doc.createRange();
+			if (reverse) {
+				startPt.setStartBefore(this.currentNode);
+			} else {
+				startPt.setStart(this.currentNode, this.range.endOffset);
+			}
+			
+			this.range = finder.Find(this.text, searchRange, startPt, searchRange);
+			if (this.range) {
+				this.currentNode = this.range ? this.range.startContainer : null;
+				return this.currentNode ? this.currentNode.parentNode : null;
+			}
+		}
+		
+		if (this.currentNode) {
+			startPt = doc.createRange();
+			if (reverse) {
+				startPt.setStartBefore(this.currentNode);
+			} else {
+				startPt.setStartAfter(this.currentNode);
+			}
+		}
+		
+		this.range = finder.Find(this.text, searchRange, startPt, searchRange);
+		this.currentNode = this.range ? this.range.startContainer : null;
+		return this.currentNode ? this.currentNode.parentNode : null;
+	},
+
+	// Helpers
+	this.resetRange = function() {
+		searchRange = doc.createRange();
+		searchRange.setStart(this.currentRow, 0);
+		searchRange.setEnd(this.currentRow, this.currentRow.childNodes.length);
+		
+		startPt = searchRange;
+	}
+
+	this.getFirstRow = function() {
+		var selectedReader = Firebug.FlashbugModel.selectedReader;
+		var node = (selectedReader.name == "Trace") ? panel.traceNode : panel.policyNode;
+		return node.firstChild;
+	}
+
+	this.getNextRow = function(wrapAround, reverse) {
+		// xxxHonza: reverse searching missing.
+		for (var sib = this.currentRow.nextSibling; sib; sib = sib.nextSibling) {
+			if (hasClass(sib, "flb-trace-row")) {
+				return sib;
+			}
+		}
+		
+		return wrapAround ? this.getFirstRow() : null;
+	}
+};
+
+//////////////////////////
+// Firebug Registration //
+//////////////////////////
+
+var fbVersion = Firebug.version.split('.');
+if (fbVersion[0] >= 1 && fbVersion[1] >= 6) {
+	Firebug.registerActivableModule(Firebug.FlashbugModel);
+	Firebug.registerPanel(FlashbugPanel);
 } else {
-    Firebug.registerModule(Firebug.FlashbugModel);
-    Firebug.registerModule(Firebug.AMFInfoTab);
+	var alertTimer = CCIN('@mozilla.org/timer;1', 'nsITimer');
+	alertTimer.initWithCallback({ notify:function(timer) { Flashbug.alert('Flashbug 1.7 was designed for Firebug 1.6 or higher. Firebug ' + Firebug.version + ' was found, please install a newer version.', 'Error'); } }, 1000, Ci.nsITimer.TYPE_ONE_SHOT);
 }
 
-Firebug.registerPanel(FlashbugPanel);
+/////////////////////////////
+// Firebug Trace Constants //
+/////////////////////////////
 
-Firebug.registerRep(
-    Firebug.FlashbugModel.CookieTable,          // Cookie table with list of cookies
-    Firebug.FlashbugModel.CookieRow             // Entry in the cookie table
-);
-
-//-----------------------------------------------------------------------------
-
-FBTrace.DBG_FLASH = 		getPref(FirebugPrefDomain, "DBG_FLASH");
-FBTrace.DBG_FLASH_SOL = 	getPref(FirebugPrefDomain, "DBG_FLASH_SOL");
-FBTrace.DBG_FLASH_AMF = 	getPref(FirebugPrefDomain, "DBG_FLASH_AMF");
-FBTrace.DBG_FLASH_AMF3 = 	getPref(FirebugPrefDomain, "DBG_FLASH_AMF3");
-FBTrace.DBG_FLASH_AMF0 = 	getPref(FirebugPrefDomain, "DBG_FLASH_AMF0");
-FBTrace.DBG_FLASH_LOG = 	getPref(FirebugPrefDomain, "DBG_FLASH_LOG");
-FBTrace.DBG_FLASH_PANEL = 	getPref(FirebugPrefDomain, "DBG_FLASH_PANEL");
-FBTrace.DBG_FLASH_MODEL = 	getPref(FirebugPrefDomain, "DBG_FLASH_MODEL");
-
-//-----------------------------------------------------------------------------
+FBTrace.DBG_FLASH = 		Firebug.getPref(Firebug.prefDomain, "DBG_FLASH");
+FBTrace.DBG_FLASH_PANEL = 	Firebug.getPref(Firebug.prefDomain, "DBG_FLASH_PANEL");
+FBTrace.DBG_FLASH_MODEL = 	Firebug.getPref(Firebug.prefDomain, "DBG_FLASH_MODEL");
 
 }});
 
@@ -1835,8 +1769,7 @@ function objFlash_DoFSCommand(command, args) {
 				Firebug.FlashbugModel.playerVersion = unescape(args);
 				
 				// Call showVersion once the SWF has updated the value
-				//if(FirebugChrome && FirebugChrome.getSelectedPanel().name == "flashbug") FirebugChrome.getSelectedPanel().showVersion();
-				if(FirebugContext) FirebugContext.getPanel("flashbug").showVersion();
+				if (Firebug.currentContext && Firebug.currentContext.getPanel("flashbug")) Firebug.currentContext.getPanel("flashbug").showVersion();
 			}
 			break;
 	}

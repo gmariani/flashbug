@@ -1,46 +1,206 @@
 ﻿/* See license.txt for terms of usage */
-
-.flashbugHighlight {
-	background-color: yellow;
-}
-
-.flashbugLink {
+/* Global */
+.flb-link {
 	text-decoration: none;
 	border-bottom: dotted 1px;
 	color: blue;
 	color: -moz-nativehyperlinktext;
-	/*cursor: pointer;*/
+	cursor: pointer;
 }
 
-/* Trace Rows */
-.flashbugRow {
+.panelNode-flashbug {
+    overflow-x: hidden;
+}
+
+.disabledPanelBox .descImage-flashbug {
+	background-image: url(chrome://flashbug/skin/activation-menu-flash-console.png);
+	width: 105px;
+}
+
+.disabledPanelBox .descImage-sharedObjects {
+	background-image: url(chrome://flashbug/skin/activation-menu-sharedobjects.png);
+	width: 115px;
+}
+
+/* AMF Info Tab */
+.flb-amf-group {
+	padding-top: 0px !important;
+}
+
+.flb-amf-hideCategory .flb-amf-category {
+    display: none;
+}
+
+/* SWF Info Tab */
+.flb-swf-twisty {
+	display:inline-block;
+	width: 11px;
+	height: 11px;
+	background-image: url(chrome://firebug/skin/win/twistyOpen.png);
+    background-repeat: no-repeat;
+	padding-left: 5px;
+}
+
+.flb-swf-twisty.closed {
+	background-image: url(chrome://firebug/skin/win/twistyClosed.png);
+}
+
+.flb-swf-clear {
+	clear:both;
+	font-size: 1px;
+	height: 0;
+	line-height: 0;
+}
+
+.flb-swf-hidden {
+	visibility:collapse;
+}
+
+.flb-swf-loading {
+    width: 16px;
+    height: 16px;
+    background: url(chrome://firebug/skin/loading_16.gif) no-repeat;
+}
+
+.flb-swf-swatch {
+	border:1px solid #ccc;
+	margin:0 5px 0 5px;
+    width: 10px;
+    height: 10px;
+    display:inline-block;
+}
+
+.flb-swf-font-row {
+	padding: 0 10px 10px 0;
+    font-family: Lucida Grande, Tahoma, sans-serif;
+    font-weight: bold;
+    vertical-align: top;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.flb-swf-font-name { }
+
+.flb-swf-font-box {
+	margin:0;
+}
+
+.flb-swf-font-copy {
+	color: #666666;
+    font-weight: normal;
+}
+
+.flb-swf-morph-box {
+	min-width: 100px;
+    text-align: center;
+	margin:10px;
+	float:left;
+	display:block;
+	padding:2px;
+	border:1px solid #CCC;
+}
+
+.flb-swf-thumb-box {
+    min-width: 100px;
+	/*min-height: 85px;
+    height: 140px;*/
+    text-align: center;
+	margin:10px;
+	float:left;
+	display:block;
+	padding:2px;
+	border:1px solid #E8E8E8;
+}
+
+/* Hard to find tags */
+.flb-swf-thumb-box[title=defineMorphShape2],
+.flb-swf-thumb-box[title=defineBitsJPEG4],
+.flb-swf-thumb-box[title=defineSound_0],
+.flb-swf-thumb-box[title=defineSound_11],
+.flb-swf-thumb-box[title=defineVideoStream_6],
+.flb-swf-thumb-box[title=defineVideoStream_7] {
+	background-color: #FEFC9C;
+}
+
+/* Unsupported tags */
+/*.flb-swf-thumb-box[title=defineVideoStream_6],
+.flb-swf-thumb-box[title=defineVideoStream_7],
+.flb-swf-thumb-box[title=defineSound_1],
+.flb-swf-thumb-box[title=defineSound_4],
+.flb-swf-thumb-box[title=defineSound_5],
+.flb-swf-thumb-box[title=defineSound_6] {
+	background-color: #FF8080;
+}*/
+
+.flb-swf-thumb-caption {
+    font: message-box;
+}
+
+.flb-swf-thumb-export {
+    color: #bdbdbd;
+    font-weight: normal;
+}
+
+.flb-swf-thumb-export:hover {
+    color: blue;
+    cursor: pointer;
+}
+
+.flb-swf-thumb-unsupported {
+    color: red;
+    font-weight: normal;
+}
+
+.flb-swf-sound-control {
+	width: 300px;
+	overflow: hidden;
+	height: 40px;
+}
+
+.flb-swf-sound-control audio {
+	margin-top: 12px;
+}
+
+.flb-swf-image-box {
+	display:block;
+	background: url(chrome://flashbug/skin/checkerboard.png)
+}
+
+/* Trace Panel */
+.flb-trace-row {
 	font-family: Monaco, monospace;
 	white-space: pre-wrap;
 	position: relative;
 	margin: 0;
 	border-bottom: 1px solid #D7D7D7;
 	padding: 2px 4px 1px 6px;
+	background-color: #FFFFFF;
+	min-height:12px;
 }
 
-.flashbugRowInfo {
+.flb-trace-row:hover {
+    background-color: #E8E8E8;
+}
+
+.flb-trace-row-info {
 	padding-left: 22px;
     background-repeat: no-repeat;
     background-position: 4px 2px;
 	
 	background-color: #FFFFFF;
-	background-image: url('chrome://flashbug/skin/infoIcon.png');
+	background-image: url(chrome://flashbug/skin/infoIcon.png);
 }
 
-.flashbugRowWarning {
+.flb-trace-row-warning {
 	padding-left: 22px;
     background-repeat: no-repeat;
     background-position: 4px 2px;
 	
 	background-color: cyan;
-	background-image: url('chrome://flashbug/skin/warningIcon.png');
+	background-image: url(chrome://flashbug/skin/warningIcon.png);
 }
 
-.flashbugRowError {
+.flb-trace-row-error {
 	padding-left: 22px;
     background-repeat: no-repeat;
     background-position: 4px 2px;
@@ -49,45 +209,56 @@
 	background-color: LightYellow;
 }
 
-.flashbugRowIconError {
-	background-image: url('chrome://flashbug/skin/errorIcon.png');
+.flb-trace-row-error-icon {
+	background-image: url(chrome://flashbug/skin/errorIcon.png);
 }
 
-.flashbugRowXMLError {
+.flb-trace-row-error-xml {
     color: red;
     padding-bottom: 15px;
 }
 
-.flashbugRowXMLErrorSource {
+.flb-trace-row-error-xml-source {
     color: gray;
 }
 
-/* Panel */
-.flashbugInfoText {
+.flb-trace-text {
+	position:relative;
+}
+
+.flb-trace-info-text {
     display: none;
 	height: 100%;
 	overflow:auto;
+	position: relative;
+	z-index: 2;
 }
 
-.flashbugInfoText[selected="true"] {
+.flb-trace-info-text[selected=true] {
     display: block;
 }
 
-.panelNode-flashbug {
-    overflow-x: hidden;
-} 
+.flb-trace-disabled-text {
+	color: rgb(128, 128, 128);
+	position:absolute;
+	top:0px;
+	z-index: 1;
 
+	font-family: Monaco, monospace;
+	margin: 0;
+	padding: 2px 4px 1px 6px;
+}
 
-/* Header for cookie list */
-.cookieTable {
+/* Shared Objects Panel */
+.flb-so-table {
     width: 100%;
 }
 
-.cookieHeaderRow {
+.flb-so-header-row {
     height: 16px;
 }
 
-.cookieHeaderCell {
+.flb-so-header-cell {
     cursor: pointer;
     -moz-user-select: none;
     border-bottom: 1px solid #9C9C9C;
@@ -97,34 +268,34 @@
     white-space: nowrap;
 }
 
-.cookieHeaderRow > .cookieHeaderCell:first-child > .cookieHeaderCellBox {
+.flb-so-header-row > .flb-so-header-cell:first-child > .flb-so-header-cell-box {
     padding: 2px 14px 2px 18px;
 }
 
-.cookieHeaderCellBox {
+.flb-so-header-cell-box {
     padding: 2px 14px 2px 10px;
     border-left: 1px solid #D9D9D9;
     border-right: 1px solid #9C9C9C;
 }
 
-.cookieHeaderCell:hover:active {
+.flb-so-header-cell:hover:active {
     background: #959595 url(chrome://flashbug/skin/tableHeaderActive.gif) repeat-x;
 }
 
-.cookieHeaderSorted {
+.flb-so-header-sorted {
     background: #7D93B2 url(chrome://flashbug/skin/tableHeaderSorted.gif) repeat-x;
 }
 
-.cookieHeaderSorted > .cookieHeaderCellBox {
+.flb-so-header-sorted > .flb-so-header-cell-box {
     border-right-color: #6B7C93;
     background: url(chrome://flashbug/skin/arrowDown.png) no-repeat right;    
 }
 
-.cookieHeaderSorted.sortedAscending > .cookieHeaderCellBox {
+.flb-so-header-sorted.sortedAscending > .flb-so-header-cell-box {
     background-image: url(chrome://flashbug/skin/arrowUp.png);
 }
 
-.cookieHeaderSorted:hover:active {
+.flb-so-header-sorted:hover:active {
     background: #536B90 url(chrome://flashbug/skin/tableHeaderSortedActive.gif) repeat-x;
 }
 
@@ -150,54 +321,53 @@
 
 /************************************************************************************************/
 
-.cookieRow .cookieNameLabel {
+.flb-so-row .flb-so-name-label {
     background-image: url(chrome://firebug/skin/win/twistyClosed.png);
     background-repeat: no-repeat;
     background-position: 2px 2px;
 }
 
-.cookieNameLabel:hover {
+.flb-so-name-label:hover {
     cursor: pointer;
     color: blue;
     text-decoration: underline;
 }
 
-/*.cookieRow */.opened > .cookieCol > .cookieNameLabel {
+/*.flb-so-row */.opened > .flb-so-col > .flb-so-name-label {
     background-image: url(chrome://firebug/skin/win/twistyOpen.png);
 }
 
 /************************************************************************************************/
 
-.cookieRow {
+.flb-so-row {
     background: white;
 }
 
-.cookieRow:hover {
+.flb-so-row:hover {
     background: #EFEFEF;
 }
 
-.cookieCol {
+.flb-so-col {
     padding: 0;
     vertical-align: top;
     border-bottom: 1px solid #EFEFEF;  
     white-space: nowrap;
 }
 
-.cookieLabel {
-}
+.flb-so-label { }
 
 /* Support for search box */
-.panelNode.searching .cookieRow {
+.panelNode.searching .flb-so-row {
     display: none;
 }
 
-.cookieRow.matched {
+.flb-so-row.matched {
     display: table-row !important;
 }
 
 /************************************************************************************************/
 
-.cookieNameLabel {
+.flb-so-name-label {
     -moz-box-sizing: padding-box;
     overflow: hidden;
     padding-top: 1px;
@@ -205,25 +375,25 @@
     min-width: 70px;
 }
 
-.cookieNameCol > .cookieNameLabel {
+.flb-so-name-col > .flb-so-name-label {
     padding-left: 18px;
 }
 
-.cookieSizeLabel,
-.cookieSWFLabel,
-.cookiePathLabel,
-.cookieVersionLabel {
+.flb-so-size-label,
+.flb-so-swf-label,
+.flb-so-path-label,
+.flb-so-version-label {
     padding: 1px 0 2px 0 !important;
     width: 100%;
 }
 
-.cookiePathLabel {
+.flb-so-path-label {
     color: rgb(128, 128, 128);
 }
 
 /* This style makes sure that only portion of text is visible
  depending on current size (width) of the parent column */
-.cookiePathLabel {
+.flb-so-path-label {
     overflow: hidden;
     display: -moz-box;
 }
@@ -239,39 +409,39 @@
  its children to be wrapped in a block."
  {file: "chrome://firebug/content/panel.html" line: 0}]
  */
-.cookiePathLabel span {
+.flb-so-path-label span {
     display: inline-block;
 }
 
-.cookieVersionCol,
-.cookieSizeCol,
-.cookieSWFCol,
-.cookiePathCol {
+.flb-so-version-col,
+.flb-so-size-col,
+.flb-so-swf-col,
+.flb-so-path-col {
     padding-left: 10px;
 }
 
-.cookieSizeCol {
+.flb-so-size-col {
     text-align :right;
     padding-right: 10px;
 }
 
 /************************************************************************************************/
 
-.cookieInfoCol {
+.flb-so-info-col {
     border-top: 1px solid #EEEEEE;
     background: url(chrome://firebug/skin/group.gif) repeat-x #FFFFFF;
 }
 
-.cookieInfoBody {
+.flb-so-info-body {
     margin: 10px 0 4px 10px;
 }
 
-.cookieInfoTabs {
+.flb-so-info-tabs {
     position: relative;
     padding-left: 14px;
 }
 
-.cookieInfoTab {
+.flb-so-info-tab {
     position: relative;
     top: -3px;
     margin-top: 10px;
@@ -282,18 +452,18 @@
     color: #565656;
 }
 
-.cookieInfoTab:hover {
+.flb-so-info-tab:hover {
     cursor: pointer;
 }
 
-.cookieInfoTab[selected="true"] {
+.flb-so-info-tab[selected="true"] {
     cursor: default !important;
     border-color: #D7D7D7;
     -moz-border-radius: 4px 4px 0 0;
     background-color: #FFFFFF;
 }
 
-.cookieInfoText {
+.flb-so-info-text {
     display: none;
     margin: 0;
     border: 1px solid #D7D7D7;
@@ -304,6 +474,6 @@
     overflow-x: auto;
 }
 
-.cookieInfoText[selected="true"] {
+.flb-so-info-text[selected="true"] {
     display: block;
 }

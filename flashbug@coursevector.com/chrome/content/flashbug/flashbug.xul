@@ -2,38 +2,45 @@
 
 <?xml-stylesheet href="chrome://flashbug/content/flashbug.css"?>
 
-<!DOCTYPE window [
-<!ENTITY % flashbugDTD SYSTEM "chrome://flashbug/locale/flashbug.dtd">
-%flashbugDTD;
-]>
-
 <overlay 
 	xmlns:html="http://www.w3.org/1999/xhtml"
 	xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
 	
 	<script type="application/x-javascript" src="chrome://flashbug/content/lib.js"/>
-	<script type="application/x-javascript" src="chrome://flashbug/content/logReader.js"/>
-	<script type="application/x-javascript" src="chrome://flashbug/content/solReader.js"/>
-	<script type="application/x-javascript" src="chrome://flashbug/content/byteArray.js"/>
-	<script type="application/x-javascript" src="chrome://flashbug/content/amf.js"/>
-	<script type="application/x-javascript" src="chrome://flashbug/content/amf3.js"/>
-	<script type="application/x-javascript" src="chrome://flashbug/content/amf0.js"/>
+	<!-- Used for SWF, AMF and SOL -->
+	<script type="application/x-javascript" src="chrome://flashbug/content/lib/ByteArrayString.js"/>
+	
+	<!-- Used for AMF and SOL -->
+	<script type="application/x-javascript" src="chrome://flashbug/content/lib/AMF3.js"/>
+	<script type="application/x-javascript" src="chrome://flashbug/content/lib/AMF0.js"/>
+	
+	<!-- Log Panel -->
 	<script type="application/x-javascript" src="chrome://flashbug/content/flashbug.js"/>
+	
+	<!-- Shared Object Panel -->
+	<script type="application/x-javascript" src="chrome://flashbug/content/SharedObjectPanel.js"/>
+	
+	<!-- AMF Tab -->
+	<script type="application/x-javascript" src="chrome://flashbug/content/AMFInfoTab.js"/>
+	
+	<!-- SWF Tab -->
+	<script type="application/x-javascript" src="chrome://flashbug/content/SWFInfoTab.js"/>
 	
 	<stringbundleset id="stringbundleset">
         <stringbundle id="strings_flashbug" src="chrome://flashbug/locale/flashbug.properties"/>
     </stringbundleset>
 	
 	<commandset id="mainCommandSet">
-		<command id="cmd_flbClear" 		oncommand="Firebug.FlashbugModel.clear(FirebugContext)"/>
-		<command id="cmd_flbRefresh" 	oncommand="Firebug.FlashbugModel.reparse(FirebugContext)"/>
-		<command id="cmd_flbPause" 		oncommand="Firebug.FlashbugModel.pause(FirebugContext)"/>
-		<command id="cmd_flbPlay"  		oncommand="Firebug.FlashbugModel.play(FirebugContext)"/>
-		<command id="cmd_flbOpen"  		oncommand="Firebug.FlashbugModel.openFile(FirebugContext)"/>
-	</commandset>
-	
-	<toolbar id="fbToolbar" align="center" role="toolbar">
+		<command id="cmd_flbClear" 		oncommand="Firebug.FlashbugModel.onClear(FirebugContext)"/>
+		<command id="cmd_flbPause" 		oncommand="Firebug.FlashbugModel.onPause(FirebugContext)"/>
+		<command id="cmd_flbPlay"  		oncommand="Firebug.FlashbugModel.onPlay(FirebugContext)"/>
+		<command id="cmd_flbOpen"  		oncommand="Firebug.FlashbugModel.onOpen(FirebugContext)"/>
 		
+		<command id="cmd_flbRefresh" 	oncommand="Firebug.FlashbugSOLModel.refresh(FirebugContext)"/>
+		<command id="cmd_flbDelete" 	oncommand="Firebug.FlashbugSOLModel.deleteAll(FirebugContext)"/>
+	</commandset>
+
+	<hbox id="fbToolbarInner" insertbefore="fbDetachButton" class="innerToolbar" flex="1" align="center">
 		<html:object id="objFlash" 
 			name="objFlash" 
 			width="1" height="1" 
@@ -43,66 +50,67 @@
 			<param name="allowScriptAccess" value="always" />
 		</html:object>
 		
-		<hbox id="fbToolbarInner" insertbefore="fbDetachButton" flex="1" align="center">
-			<hbox id="fbFlashbugButtons" insertafter="fbNetButtons" collapsed="true">
-				<hbox id="fbFlashbugButtonsFilter" class="noTabStop">
-					<toolbarbutton id="flashbugLogFilter-trace" 
-						label="&flashbug.menu.trace;" 
-						type="radio" 
-						class="toolbar-text-button"
-						tooltiptext="&flashbug.menu.traceToolTip;" 
-						group="flashbugLogFilter" checked="true"
-						oncommand="Firebug.FlashbugModel.selectLog(FirebugContext, 'Trace')"/>
-					<toolbarbutton id="flashbugLogFilter-policy" 
-						label="&flashbug.menu.policy;" 
-						type="radio" 
-						class="toolbar-text-button"
-						tooltiptext="&flashbug.menu.policyToolTip;" 
-						group="flashbugLogFilter"
-						oncommand="Firebug.FlashbugModel.selectLog(FirebugContext, 'Policy')"/>
-					<toolbarbutton id="flashbugLogFilter-cookie" 
-						label="&flashbug.menu.sharedobject;" 
-						type="radio" 
-						class="toolbar-text-button"
-						tooltiptext="&flashbug.menu.sharedobjectToolTip;" 
-						group="flashbugLogFilter"
-						oncommand="Firebug.FlashbugModel.selectLog(FirebugContext, 'Cookie')"/>
-				</hbox>
-				<toolbarseparator/>
-				<toolbarbutton id="flbClear" 
-					label="&flashbug.menu.clear;" 
-					class="toolbar-text-button" 
-					tooltiptext="&flashbug.menu.clearToolTip;" 
-					image="chrome://flashbug/skin/clear.png" 
-					command="cmd_flbClear"/>
-				<toolbarbutton id="flbPlayPause" 
-					label="&flashbug.menu.pause;" 
-					class="toolbar-text-button flashbugPlayBtn" 
-					tooltiptext="&flashbug.menu.pauseToolTip;" 
-					image="chrome://flashbug/skin/pause.png" 
-					command="cmd_flbPause"/>
-				<toolbarbutton id="flbOpen" 
-					label="&flashbug.menu.open;" 
-					class="toolbar-text-button" 
-					tooltiptext="&flashbug.menu.openToolTip;" 
-					image="chrome://flashbug/skin/open.png" 
-					command="cmd_flbOpen"/>
-				<toolbarbutton id="flbRefresh" 
-					label="&flashbug.menu.refresh;" 
-					class="toolbar-text-button" 
-					tooltiptext="&flashbug.menu.refreshToolTip;" 
-					image="chrome://flashbug/skin/refresh.png" 
-					command="cmd_flbRefresh"/>
+		<!--<hbox id="fbNetButtons" collapsed="true">
+			<hbox id="fbNetButtonsFilter" class="noTabStop">
+				<toolbarbutton id="fbNetFilter-amf" label="AMF" type="radio" insertafter="fbNetFilter-xhr" 
+					tooltiptext="ActionMessageFormat"
+					class="toolbar-text-button" group="firebugNetFilter"
+					oncommand="Firebug.NetMonitor.onToggleFilter(FirebugContext, 'amf')"/>
 			</hbox>
-			
-			<hbox id="fbFlashbugVersion" insertafter="fbDebuggerButtons" collapsed="true">
-				<description id="txtVersion" 
-					value="&flashbug.menu.detecting;" 
-					disabled="true"
-					style="padding-top: 4px;"/>
-					
-				<label id="fbFlashbugDownload" value="&flashbug.menu.getdebugger;" class="text-link" href="http://www.adobe.com/support/flashplayer/downloads.html" />
+		</hbox>-->
+		
+		<hbox id="fbFlashbugButtons" insertafter="fbNetButtons" collapsed="true">
+			<toolbarseparator class="fbPanelSpecificButtonsSeparator"/>
+			<toolbarbutton id="flbClear" 
+				label="flashbug.menu.clear" 
+				class="toolbar-text-button" 
+				tooltiptext="flashbug.menu.clearToolTip" 
+				command="cmd_flbClear"/>
+			<toolbarbutton id="flbOpen" 
+				label="flashbug.menu.open" 
+				class="toolbar-text-button" 
+				tooltiptext="flashbug.menu.openToolTip" 
+				command="cmd_flbOpen"/>
+			<hbox id="fbFlashbugButtonsFilter" class="noTabStop">
+				<toolbarseparator/>
+				<toolbarbutton id="flashbugLogFilter-trace" 
+					label="flashbug.menu.trace" 
+					type="radio" 
+					class="toolbar-text-button"
+					tooltiptext="flashbug.menu.traceToolTip" 
+					group="flashbugLogFilter" checked="true"
+					oncommand="Firebug.FlashbugModel.onSelectLog(FirebugContext, 'Trace')"/>
+				<toolbarbutton id="flashbugLogFilter-policy" 
+					label="flashbug.menu.policy" 
+					type="radio" 
+					class="toolbar-text-button"
+					tooltiptext="flashbug.menu.policyToolTip" 
+					group="flashbugLogFilter"
+					oncommand="Firebug.FlashbugModel.onSelectLog(FirebugContext, 'Policy')"/>
 			</hbox>
 		</hbox>
-	</toolbar>
+		
+		<hbox id="fbFlashbugSOButtons" insertafter="fbNetButtons" collapsed="true">
+			<toolbarbutton id="flbRefresh" 
+				label="flashbug.menu.refresh" 
+				class="toolbar-text-button" 
+				tooltiptext="flashbug.menu.refreshToolTip" 
+				command="cmd_flbRefresh"/>
+			<toolbarseparator/>
+			<toolbarbutton id="flbDeleteAll" 
+				label="flashbug.menu.delete" 
+				class="toolbar-text-button" 
+				tooltiptext="flashbug.menu.deleteToolTip" 
+				command="cmd_flbDelete"/>
+		</hbox>
+		
+		<hbox id="fbFlashbugVersion" insertafter="fbDebuggerButtons" collapsed="true" flex="1" align="right">
+			<description id="flbVersion" 
+				value="flashbug.menu.detecting" 
+				disabled="true"
+				style="padding-top: 4px;"/>
+				
+			<label id="fbFlashbugDownload" value="flashbug.menu.getdebugger" class="text-link" href="http://www.adobe.com/support/flashplayer/downloads.html" />
+		</hbox>
+	</hbox>
 </overlay>

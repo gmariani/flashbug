@@ -1,8 +1,12 @@
 const nsIPrefBranch = Components.interfaces.nsIPrefBranch;
-const prefs = Components.classes["@mozilla.org/preferences-service;1"].getService(Components.interfaces.nsIPrefBranch2);
+const prefs = Components.classes['@mozilla.org/preferences-service;1'].getService(Components.interfaces.nsIPrefBranch2);
+
+function $(id) {
+	return document.getElementById(id);
+};
 
 function getPref(name) {
-	var prefName = "extensions.firebug.flashbug." + name;
+	var prefName = 'extensions.firebug.flashbug.' + name;
 	var type = prefs.getPrefType(prefName);
 	
 	if (type == nsIPrefBranch.PREF_STRING) {
@@ -15,7 +19,7 @@ function getPref(name) {
 };
 
 function setPref(name, value) {
-	var prefName = "extensions.firebug.flashbug." + name;
+	var prefName = 'extensions.firebug.flashbug.' + name;
 	var type = prefs.getPrefType(prefName);
 	
 	if (type == nsIPrefBranch.PREF_STRING) {
@@ -26,60 +30,158 @@ function setPref(name, value) {
 		prefs.setBoolPref(prefName, value);
 	}
 };
+//
+
+function internationalizeUI(doc) {
+	var elements = ['winMain', 'tabGeneral', 'tabTrace', 'tabPolicy', 'tabNet', 'descGeneral', 'lblCharset', 'lblMaxLines', 'maxLines', 'capMMDesc', 
+	'capTraceDesc', 'capPolDesc', 'enableErrors', 'lblMaxWarning', 'capTraceAdv', 'descUndoc', 'traceOutputBuffered', 'aS3Verbose', 'aS3Trace', 
+	'aS3StaticProfile', 'aS3DynamicProfile', 'descPolicy', 'lblPolicyLink', 'enablePolicy', 'enablePolicyAppend', 'descNet', 'enableAMF', 'enableSWF',
+	'capNetAMF', 'capNetSWF', 'capNetSWFFilter', 'enableSWFHeaderOnly', 'enableSWFFont', 'enableSWFBinary', 'enableSWFVideo', 
+	'enableSWFShape', 'enableSWFMorph', 'enableSWFImage', 'enableSWFSound', 'enableSWFText', 'useGlobalVariables'];
+	var attributes = ['label', 'tooltiptext', 'value', 'title'];
+	
+	Flashbug.internationalizeElements(doc, elements, attributes);
+};
+
+// Is called before checked status is updated from mouse event
+function onSWF(e) {
+	var disabled = $('enableSWF').checked;
+	$('enableSWFHeaderOnly').disabled = disabled;
+	if (!disabled && $('enableSWFHeaderOnly').checked) disabled = true;
+	
+	$('enableSWFFont').disabled = disabled;
+	$('enableSWFBinary').disabled = disabled;
+	$('enableSWFVideo').disabled = disabled;
+	$('enableSWFShape').disabled = disabled;
+	$('enableSWFMorph').disabled = disabled;
+	$('enableSWFImage').disabled = disabled;
+	$('enableSWFSound').disabled = disabled;
+	
+	if (!disabled && !$('enableSWFHeaderOnly').checked && !$('enableSWFFont').checked) disabled = true;
+	$('enableSWFText').disabled = disabled;
+};
+
+function onHeaderOnly(e) {
+	var disabled = !$('enableSWFHeaderOnly').checked;
+	$('enableSWFFont').disabled = disabled;
+	$('enableSWFBinary').disabled = disabled;
+	$('enableSWFVideo').disabled = disabled;
+	$('enableSWFShape').disabled = disabled;
+	$('enableSWFMorph').disabled = disabled;
+	$('enableSWFImage').disabled = disabled;
+	$('enableSWFSound').disabled = disabled;
+	
+	if (!disabled && !$('enableSWFFont').checked) disabled = true;
+	$('enableSWFText').disabled = disabled;
+};
+
+function onFont(e) {
+	var disabled = $('enableSWFFont').checked;
+	$('enableSWFText').disabled = disabled;
+};
 
 function onSettingsLoad() {
-    document.getElementById("useGlobalVariables").checked = 	getPref("useGlobalVariables");
-    document.getElementById("maxLines").value = 				getPref("maxLines");
-    document.getElementById("maxWarnings").value = 				getPref("maxWarnings");
-	document.getElementById("enableErrors").checked = 			getPref("enableErrors");
-	document.getElementById("enablePolicy").checked = 			getPref("enablePolicy");
-	document.getElementById("enablePolicyAppend").checked = 	getPref("enablePolicyAppend");
+	$('useGlobalVariables').checked = 	getPref('useGlobalVariables');
+	$('maxLines').value = 				getPref('maxLines');
+	$('maxWarnings').value = 			getPref('maxWarnings');
+	$('enableErrors').checked = 		getPref('enableErrors');
+	$('enablePolicy').checked = 		getPref('enablePolicy');
+	$('enablePolicyAppend').checked = 	getPref('enablePolicyAppend');
+
+	$('traceOutputBuffered').checked = 	getPref('traceOutputBuffered');
+	$('aS3Verbose').checked = 			getPref('aS3Verbose');
+	$('aS3Trace').checked = 			getPref('aS3Trace');
+	$('aS3StaticProfile').checked = 	getPref('aS3StaticProfile');
+	$('aS3DynamicProfile').checked = 	getPref('aS3DynamicProfile');
+
+	$('enableAMF').checked = 			getPref('enableAMF');
+	$('enableSWF').checked = 			getPref('enableSWF');
+	$('enableSWFHeaderOnly').checked = 	getPref('enableSWFHeaderOnly');
+	$('enableSWFFont').checked = 		getPref('enableSWFFont');
+	$('enableSWFBinary').checked = 		getPref('enableSWFBinary');
+	$('enableSWFVideo').checked = 		getPref('enableSWFVideo');
+	$('enableSWFShape').checked = 		getPref('enableSWFShape');
+	$('enableSWFMorph').checked = 		getPref('enableSWFMorph');
+	$('enableSWFImage').checked = 		getPref('enableSWFImage');
+	$('enableSWFSound').checked = 		getPref('enableSWFSound');
+	$('enableSWFText').checked = 		getPref('enableSWFText');
 	
-	document.getElementById("traceOutputBuffered").checked = 	getPref("traceOutputBuffered");
-	document.getElementById("aS3Verbose").checked = 			getPref("aS3Verbose");
-	document.getElementById("aS3Trace").checked = 				getPref("aS3Trace");
-	document.getElementById("aS3StaticProfile").checked = 		getPref("aS3StaticProfile");
-	document.getElementById("aS3DynamicProfile").checked = 		getPref("aS3DynamicProfile");
+	// Init checkboxes
+	var disabled = !$('enableSWF').checked;
+	$('enableSWFHeaderOnly').disabled = disabled;
+	if (!disabled && $('enableSWFHeaderOnly').checked) disabled = true;
+	
+	$('enableSWFFont').disabled = disabled;
+	$('enableSWFBinary').disabled = disabled;
+	$('enableSWFVideo').disabled = disabled;
+	$('enableSWFShape').disabled = disabled;
+	$('enableSWFMorph').disabled = disabled;
+	$('enableSWFImage').disabled = disabled;
+	$('enableSWFSound').disabled = disabled;
+	
+	if (!disabled && !$('enableSWFHeaderOnly').checked && !$('enableSWFFont').checked) disabled = true;
+	$('enableSWFText').disabled = disabled;
 
     /** charset **/
-    var tmp_char = getPref("charSet");
-    var element = document.getElementById("cbCharset");
+    var tmp_char = getPref('charSet');
+    var element = $('cbCharset');
     for(var a = 0; a < element.firstChild.childNodes.length; a++) {
         if(tmp_char == element.firstChild.childNodes[a].value) {
             element.selectedIndex = a;
             break;
         }
     }
+	
+	// Init mm.cfg
+	$('mmLocation').value = Flashbug.getMMFile().path;
+	
+	$('traceLocation').value = Flashbug.getLogFile().path;
+	
+	$('policyLocation').value = Flashbug.getPolicyFile().path;
+	
+	internationalizeUI(document);
 }
 
 function onSettingsAccept() {
-	setPref("maxLines", 			document.getElementById("maxLines").value);
-	setPref("maxWarnings", 			parseInt(document.getElementById("maxWarnings").value));
-	setPref("useGlobalVariables", 	document.getElementById("useGlobalVariables").checked);
-	setPref("enableErrors", 		document.getElementById("enableErrors").checked);
-	setPref("enablePolicy", 		document.getElementById("enablePolicy").checked);
-	setPref("enablePolicyAppend", 	document.getElementById("enablePolicyAppend").checked);
+	setPref('useGlobalVariables', 	$('useGlobalVariables').checked);
+	setPref('maxLines', 			$('maxLines').value);
+	setPref('maxWarnings', 			parseInt($('maxWarnings').value));
+	setPref('enableErrors', 		$('enableErrors').checked);
+	setPref('enablePolicy', 		$('enablePolicy').checked);
+	setPref('enablePolicyAppend', 	$('enablePolicyAppend').checked);
 	
-	setPref("traceOutputBuffered", 	document.getElementById("traceOutputBuffered").checked);
-	setPref("aS3Verbose", 			document.getElementById("aS3Verbose").checked);
-	setPref("aS3Trace", 			document.getElementById("aS3Trace").checked);
-	setPref("aS3StaticProfile", 	document.getElementById("aS3StaticProfile").checked);
-	setPref("aS3DynamicProfile", 	document.getElementById("aS3DynamicProfile").checked);
+	setPref('traceOutputBuffered', 	$('traceOutputBuffered').checked);
+	setPref('aS3Verbose', 			$('aS3Verbose').checked);
+	setPref('aS3Trace', 			$('aS3Trace').checked);
+	setPref('aS3StaticProfile', 	$('aS3StaticProfile').checked);
+	setPref('aS3DynamicProfile', 	$('aS3DynamicProfile').checked);
 	
-	setPref("charSet", 				document.getElementById("cbCharset").selectedItem.value);
+	setPref('charSet', 				$('cbCharset').selectedItem.value);
 	
-	var valEnableErrors = getPref("enableErrors") ? 1 : 0;
-	var valEnablePolicy = getPref("enablePolicy") ? 1 : 0;
-	var valEnablePolicyAppend = getPref("enablePolicyAppend") ? 1 : 0;
-	var valEnableOuputBuff = getPref("traceOutputBuffered") ? 1 : 0;
-	var valEnableVerbose = getPref("aS3Verbose") ? 1 : 0;
-	var valEnableTrace = getPref("aS3Trace") ? 1 : 0;
-	var valEnableStatic = getPref("aS3StaticProfile") ? 1 : 0;
-	var valEnableDynamic = getPref("aS3DynamicProfile") ? 1 : 0;
+	setPref('enableAMF', 			$('enableAMF').checked);
+	setPref('enableSWF', 			$('enableSWF').checked);
+	setPref('enableSWFHeaderOnly', 	$('enableSWFHeaderOnly').checked);
+	setPref('enableSWFFont', 		$('enableSWFFont').checked);
+	setPref('enableSWFBinary', 		$('enableSWFBinary').checked);
+	setPref('enableSWFVideo', 		$('enableSWFVideo').checked);
+	setPref('enableSWFShape', 		$('enableSWFShape').checked);
+	setPref('enableSWFMorph', 		$('enableSWFMorph').checked);
+	setPref('enableSWFImage', 		$('enableSWFImage').checked);
+	setPref('enableSWFSound', 		$('enableSWFSound').checked);
+	setPref('enableSWFText', 		$('enableSWFText').checked);
+	
+	var valEnableErrors = getPref('enableErrors') ? 1 : 0;
+	var valEnablePolicy = getPref('enablePolicy') ? 1 : 0;
+	var valEnablePolicyAppend = getPref('enablePolicyAppend') ? 1 : 0;
+	var valEnableOuputBuff = getPref('traceOutputBuffered') ? 1 : 0;
+	var valEnableVerbose = getPref('aS3Verbose') ? 1 : 0;
+	var valEnableTrace = getPref('aS3Trace') ? 1 : 0;
+	var valEnableStatic = getPref('aS3StaticProfile') ? 1 : 0;
+	var valEnableDynamic = getPref('aS3DynamicProfile') ? 1 : 0;
 	
 	try {
 		Flashbug.saveMMFile(valEnableErrors, 
-							getPref("maxWarnings"), 
+							getPref('maxWarnings'), 
 							valEnablePolicy, 
 							valEnablePolicyAppend,
 							valEnableOuputBuff,
@@ -88,6 +190,6 @@ function onSettingsAccept() {
 							valEnableStatic,
 							valEnableDynamic);
 	} catch (e) {
-		alert(e);
+		Flashbug.alert(e);
 	}
 }
